@@ -20,9 +20,9 @@ A Linux-based TUI application for overclocking enthusiasts to verify memory stab
 
 Current build is only verified on 
 
-OS: CachyOS x86_64
-Kernel: Linux 7.0.1-1-cachyos
-CPU: Intel(R) Core(TM) i5-4670K (4) @ 4.00 GHz
+OS: CachyOS x86_64  
+Kernel: Linux 7.0.1-1-cachyos  
+CPU: Intel(R) Core(TM) i5-4670K (4) @ 4.00 GHz  
 
 ## Quick Start
 ### Prerequisites
