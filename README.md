@@ -29,6 +29,10 @@ CPU: Intel(R) Core(TM) i5-4670K (4) @ 4.00 GHz
 - Go toolchain (1.20+ recommended)
 - Linux (tested on recent distributions)
 
+To be able to access hardware information, you may need to run the application with root privileges (e.g., using `sudo`), especially for features that rely on tools like `dmidecode`.
+
+For mchbar to detect memory information `iomem=relaxed` kernel parameter may be required. You can add it to your bootloader configuration (e.g., GRUB) to allow the application to access detailed memory information.
+
 ### Run the TUI
 ```
 cd mem-station
