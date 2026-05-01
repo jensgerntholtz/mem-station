@@ -15,6 +15,15 @@ A Linux-based TUI application for overclocking enthusiasts to verify memory stab
   - FOSS-based synthetic performance measurement
   - Compare theoretical vs actual memory bandwidth
 
+
+** Note:** This project is in early development and may have limited functionality. Contributions and feedback are welcome!
+
+Current build is only verified on 
+
+OS: CachyOS x86_64
+Kernel: Linux 7.0.1-1-cachyos
+CPU: Intel(R) Core(TM) i5-4670K (4) @ 4.00 GHz
+
 ## Quick Start
 ### Prerequisites
 - Go toolchain (1.20+ recommended)
