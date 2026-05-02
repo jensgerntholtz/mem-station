@@ -24,6 +24,9 @@ OS: CachyOS x86_64
 Kernel: Linux 7.0.1-1-cachyos  
 CPU: Intel(R) Core(TM) i5-4670K (4) @ 4.00 GHz  
 
+
+<img width="1282" height="719" alt="image" src="https://github.com/user-attachments/assets/171b24f0-f9ce-48af-8bba-4a35eba3275e" />
+
 ## Quick Start
 ### Prerequisites
 - Go toolchain (1.20+ recommended)
