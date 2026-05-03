@@ -655,6 +655,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, runBenchmarkCmd
 				}
 				return m, nil
+			} else if m.activeTab == 2 {
+				if !m.burnInRunning {
+					m.burnInRunning = true
+					m.status = "Running burn-in test (30s)..."
+					return m, runBurnInCmd
+				}
 			}
 			if m.focusType == focusApply {
 				m.status = "Applied (mock): " + m.snapshotSummary()
