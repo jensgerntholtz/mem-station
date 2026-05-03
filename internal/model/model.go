@@ -836,7 +836,7 @@ func (m Model) renderGuidePanel(width int) string {
 		style.Hint.Render("- Prefer JEDEC/XMP-safe bounds."),
 		"",
 		style.SectionTitle.Render("Keys"),
-		style.Hint.Render("F1 / F2            Switch tabs"),
+		style.Hint.Render("F1 / F2 / F3       Switch tabs"),
 		style.Hint.Render("Tab / Shift+Tab    Move focus"),
 		style.Hint.Render("Enter              Activate action"),
 		style.Hint.Render("L                  Toggle ratio lock"),

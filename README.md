@@ -50,7 +50,7 @@ go build -o mem-station ./cmd/mem-station
 
 ### Usage
 - Use **Tab/Shift+Tab** to move between fields
-- **F1/F2** to switch tabs (System Info / Benchmark)
+- **F1/F2/F3** to switch tabs (System Info / Benchmark / Burn-in)
 - **L** to toggle ratio lock
 - **Enter** to apply changes or run benchmarks
 - **Esc** to cancel changes
