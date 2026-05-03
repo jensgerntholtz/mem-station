@@ -1,0 +1,64 @@
+# sudo stress-ng --job burnin-memory.job --log-file burnin.log
+# MEMORY OVERCLOCK BURN-IN JOB
+run parallel         # runs all stressors at the same time for maximum load
+
+aggressive           # enable aggressive options
+metrics-brief
+verbose
+timeout 30s
+
+# ----------- Memory Stressors -----------
+atomic 0                   # atomic operations, shared data stress
+bsearch 0                  # random access binary search
+context 0                  # context switches (memory/register shuffle)
+heapsort 0                 # sort, frequent allocation/access
+hsearch 0                  # hash-table, random memory access
+lockbus 0                  # cacheline locks
+lsearch 0                  # linear search, sequential memory
+malloc 0                   # allocate/free many objects
+malloc-bytes 128M          # huge allocations (adjust for system RAM)
+malloc-max 131072          # lots of chunks
+matrix 0                   # N x N matrix math (uses RAM+FPU)
+matrix-method all
+membarrier 0               # memory barriers (Linux only)
+memcpy 0                   # brute force copying
+memfd 0                    # large shared memory, mmap allocation
+memfd-bytes 1G             # massive allocations (adjust for big RAM)
+memthrash 0                # thrash a buffer in many ways
+memthrash-method all       # cover all thrash types
+mergesort 0                # sorting (randomized, allocation heavy)
+mincore 0                  # check which pages are mapped
+null 0                     # write to /dev/null (light, but good for coverage)
+numa 0                     # migrate pages between NUMA nodes
+oom-pipe 0                 # stress pipe buffer allocations
+pipe 0                     # pipe read/write stress
+qsort 0                    # randomized sorting
+remap 0                    # memory remapping
+resources 0                # deplete system resources, allocations
+rmap 0                     # exercise VM reverse mapping
+stack 0                    # alloca stress, recursive stack
+stackmmap 0                # mmap'd stack overflow test
+str 0                      # libc string function stress
+stream 0                   # bandwidth benchmark, large arrays
+stream-l3-size 8M          # simulate large L3 cache (adjust if needed)
+tlb-shootdown 0            # TLB and page table invalidations
+tmpfs 0                    # create/mmap tmpfs files (filesystem+RAM)
+tsearch 0                  # tree manipulations (random access)
+vm 0                       # mmap/munmap, touches virtual memory
+vm-bytes 3G                # per-stressor mapping size (adjust for RAM)
+vm-locked                  # lock pages into RAM
+vm-method all              # run all methods available
+vm-rw 0                    # process_vm_{readv,writev} (Linux)
+vm-rw-bytes 256M           # large IPC
+wcs 0                      # wide char string ops
+zero 0                     # read zeros from /dev/zero
+zero-ops 25000000          # big bogo op count
+zlib 0                     # compress/decompress random data
+
+# Stop most on bogo-ops, timeout acts as a safety net
+tlb-shootdown-ops 25000000
+memcpy-ops 100000000
+malloc-ops 20000000
+stream-ops 50000000
+
+# Refer to stress-ng documentation for further system-specific tuning!
