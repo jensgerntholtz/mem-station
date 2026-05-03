@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"mem-station/internal/bench"
+	"mem-station/internal/burnin"
 	"mem-station/internal/memory"
 	"mem-station/internal/style"
 
@@ -18,6 +19,23 @@ import (
 var runBenchmarkCmd tea.Cmd = func() tea.Msg {
 	results, err := bench.RunBenchmarkCmd()
 	return benchResultMsg{results: convertBenchResults(results), err: err}
+}
+
+var runBurnInCmd tea.Cmd = func() tea.Msg {
+	results, err := burnin.RunBurnInCmd()
+	return burnInResultMsg{results: convertBurnInResults(results), err: err}
+}
+
+// Convert burnin.BurnInResults to local burnInResults type
+func convertBurnInResults(b *burnin.BurnInResults) *burnInResults {
+	if b == nil {
+		return nil
+	}
+	return &burnInResults{
+		duration: b.Duration,
+		errors:   b.Errors,
+		success:  b.Success,
+	}
 }
 
 // Convert bench.BenchResults to local benchResults type
