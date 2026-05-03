@@ -488,9 +488,9 @@ func (m Model) renderSysInfoTab() string {
 		fullWidth = 60
 	}
 
-	// if m.spd != nil {
-	//      parts = append(parts, "", StyleInfoPanel.Width(fullWidth).Render(m.renderSPDInfoPanel(fullWidth-4)))
-	// }
+	if m.spd != nil {
+		parts = append(parts, "", style.InfoPanel.Width(fullWidth).Render(m.renderSPDInfoPanel(fullWidth-4)))
+	}
 
 	if len(m.imcTimings) > 0 {
 		parts = append(parts, "", style.InfoPanel.Width(fullWidth).Render(m.renderIMCPanel()))
@@ -663,7 +663,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// --- Rendering methods migrated from main.go ---
+/* --------------- Render Methods --------------- */
 
 func (m Model) renderTimingEditor(width int) string {
 	tableHeader := lipgloss.JoinHorizontal(
@@ -934,6 +934,18 @@ func (m Model) renderIMCPanel() string {
 		chSections = append(chSections, renderChannelIMC(t))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, heading, "", strings.Join(chSections, "\n\n"))
+}
+
+func (m Model) renderSPDInfoPanel(width int) string {
+	lines := []string{
+		style.SectionTitle.Render("SPD Information"),
+		style.InfoLabel.Render("Module:") + " " + style.InfoValue.Render(m.spd.moduleManufacturer+" "+m.spd.partNumber),
+		style.InfoLabel.Render("DRAM:") + " " + style.InfoValue.Render(m.spd.dramManufacturer+" "+m.spd.memoryType),
+		style.InfoLabel.Render("Size:") + " " + style.InfoValue.Render(m.spd.sizeMB+" MB ("+m.spd.ranks+" ranks)"),
+		style.InfoLabel.Render("Speed:") + " " + style.InfoValue.Render(m.spd.moduleSpeed),
+		style.InfoLabel.Render("Timings:") + " " + style.InfoValue.Render(m.spd.timingString),
+	}
+	return lipgloss.NewStyle().Width(width).Render(strings.Join(lines, "\n"))
 }
 
 func renderChannelIMC(t tertiaryTimings) string {
