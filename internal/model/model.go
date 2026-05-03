@@ -306,8 +306,19 @@ type benchResults struct {
 	duration  string
 }
 
+type burnInResults struct {
+	duration string
+	errors   int
+	success  bool
+}
+
 type benchResultMsg struct {
 	results *benchResults
+	err     error
+}
+
+type burnInResultMsg struct {
+	results *burnInResults
 	err     error
 }
 
@@ -344,18 +355,20 @@ type spdInfo struct {
 
 // --- Model struct ---
 type Model struct {
-	fields       []timingField
-	focusIndex   int
-	focusType    focusTarget
-	lockRatios   bool
-	width        int
-	height       int
-	status       string
-	activeTab    int
-	benchRunning bool
-	benchResults *benchResults
-	spd          *spdInfo
-	imcTimings   []tertiaryTimings
+	fields        []timingField
+	focusIndex    int
+	focusType     focusTarget
+	lockRatios    bool
+	width         int
+	height        int
+	status        string
+	activeTab     int
+	benchRunning  bool
+	burnInRunning bool
+	benchResults  *benchResults
+	burnInResults *burnInResults
+	spd           *spdInfo
+	imcTimings    []tertiaryTimings
 }
 
 // --- Focus target for input navigation and actions ---
@@ -553,6 +566,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "Benchmark complete. Results shown below."
 		}
 		return m, nil
+	case burnInResultMsg:
+		m.burnInRunning = false
+		if msg.err != nil {
+			m.status = fmt.Sprintf("Burn-in failed: %v", msg.err)
+		} else {
+			m.burnInResults = msg.results
+			m.status = "Burn-in complete. Results shown below."
+		}
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -567,6 +589,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = "Benchmark results shown. Press Enter to re-run."
 			} else {
 				m.status = "Press Enter to run memrate benchmark (30s)."
+			}
+			return m, nil
+		case "f3":
+			m.activeTab = 2
+			if m.burnInResults != nil {
+				m.status = "Burn-in results shown. Press Enter to re-run."
+			} else {
+				m.status = "Press Enter to run burn-in test (30s)."
 			}
 			return m, nil
 		case "l":
