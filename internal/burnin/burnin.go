@@ -13,7 +13,7 @@ type BurnInResults struct {
 }
 
 func RunBurnInCmd() (*BurnInResults, error) {
-	cmd := exec.Command("stress-ng", "--cpu", "4", "--io", "2", "--vm", "2", "--vm-bytes", "256M", "-t", "30s")
+	cmd := exec.Command("stress-ng", "--job", "burnin-memory.job", "--log-file", "burnin.log")
 
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
@@ -32,6 +32,6 @@ func ParseBurnInOutput(output string) *BurnInResults {
 
 	r.Success = true // Assume success unless we find errors in the output
 	r.Errors = 0
-	r.Duration = "3000" // We know the Duration from the command, but you could parse it from output if needed
+	r.Duration = "30s" // We know the Duration from the command, but you could parse it from output if needed
 	return r
 }
