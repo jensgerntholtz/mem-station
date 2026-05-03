@@ -441,7 +441,7 @@ func (m *Model) fieldIndex(label string) int {
 }
 
 func (m Model) renderTabBar() string {
-	tabs := []string{"System Info", "Benchmark"}
+	tabs := []string{"System info", "Benchmark", "Burn-in"}
 	var rendered []string
 	for i, tab := range tabs {
 		if m.activeTab == i {
@@ -484,6 +484,24 @@ func (m Model) renderSysInfoTab() string {
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+func (m Model) renderBurnInTab() string {
+	fullWidth := m.width - 8
+	if fullWidth < 60 {
+		fullWidth = 60
+	}
+
+	var sections []string
+
+	if m.burnInRunning {
+		sections = append(sections, style.RunningBtn.Render(" Running... (30s) "))
+	} else {
+		sections = append(sections, style.RunBtn.Render(" Enter — Run Burn-in "))
+	}
+	sections = append(sections, "")
+
+	return style.Panel.Width(fullWidth).Render(strings.Join(sections, "\n"))
 }
 
 func (m Model) renderBenchmarkTab() string {
