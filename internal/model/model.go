@@ -648,14 +648,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "enter":
-			if m.activeTab == 1 {
+			switch m.activeTab {
+			case 1:
 				if !m.benchRunning {
 					m.benchRunning = true
 					m.status = "Running memrate benchmark (30s)..."
 					return m, runBenchmarkCmd
 				}
 				return m, nil
-			} else if m.activeTab == 2 {
+			case 2:
 				if !m.burnInRunning {
 					m.burnInRunning = true
 					m.status = "Running burn-in test (30s)..."
