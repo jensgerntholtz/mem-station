@@ -185,10 +185,14 @@ func (m Model) View() string {
 	tabBar := m.renderTabBar()
 
 	var content string
-	if m.activeTab == 0 {
+
+	switch m.activeTab {
+	case 0:
 		content = m.renderSysInfoTab()
-	} else {
+	case 1:
 		content = m.renderBenchmarkTab()
+	case 2:
+		content = m.renderBurnInTab()
 	}
 
 	status := style.Status.Render(m.status)
