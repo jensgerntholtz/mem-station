@@ -1,7 +1,9 @@
 # MemStation
+
 A Linux-based TUI application for overclocking enthusiasts to verify memory stability and performance.
 
 ## Features
+
 - **System Information:**
   - Detailed hardware and software info (similar to CPU-Z)
   - Memory timings, frequency, voltage, and more
@@ -15,28 +17,29 @@ A Linux-based TUI application for overclocking enthusiasts to verify memory stab
   - FOSS-based synthetic performance measurement
   - Compare theoretical vs actual memory bandwidth
 
+**Note:** This project is in early development and may have limited functionality. Contributions and feedback are welcome!
 
-** Note:** This project is in early development and may have limited functionality. Contributions and feedback are welcome!
-
-Current build is only verified on 
+Current build is only verified on
 
 OS: CachyOS x86_64  
 Kernel: Linux 7.0.1-1-cachyos  
 CPU: Intel(R) Core(TM) i5-4670K (4) @ 4.00 GHz  
 
-
 <img width="1282" height="719" alt="image" src="https://github.com/user-attachments/assets/171b24f0-f9ce-48af-8bba-4a35eba3275e" />
 
 ## Quick Start
+
 ### Prerequisites
+
 - Go toolchain (1.20+ recommended)
 - Linux (tested on recent distributions)
 
 To be able to access hardware information, you may need to run the application with root privileges (e.g., using `sudo`), especially for features that rely on tools like `dmidecode`.
 
-For mchbar to detect memory information `iomem=relaxed` 
+For mchbar to detect memory information `iomem=relaxed`
 
 ### Run the TUI
+
 ```
 cd mem-station
 # Run the modular TUI app
@@ -44,11 +47,13 @@ cd mem-station
 ```
 
 ### Build
+
 ```
 go build -o mem-station ./cmd/mem-station
 ```
 
 ### Usage
+
 - Use **Tab/Shift+Tab** to move between fields
 - **F1/F2/F3** to switch tabs (System Info / Benchmark / Burn-in)
 - **L** to toggle ratio lock
@@ -57,6 +62,7 @@ go build -o mem-station ./cmd/mem-station
 - **Q** or **Ctrl+C** to quit
 
 ### Notes
+
 - Some features require root privileges (e.g., hardware info via dmidecode)
 - For best results, run with `sudo` if hardware info is missing
 - Benchmarking uses `stress-ng` (ensure it is installed)
