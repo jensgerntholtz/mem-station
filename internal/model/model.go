@@ -1,15 +1,18 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"mem-station/internal/bench"
+	"mem-station/internal/burnin"
 	"mem-station/internal/memory"
 	"mem-station/internal/style"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -18,6 +21,65 @@ import (
 var runBenchmarkCmd tea.Cmd = func() tea.Msg {
 	results, err := bench.RunBenchmarkCmd()
 	return benchResultMsg{results: convertBenchResults(results), err: err}
+}
+
+// Message for burn-in output
+type burnInOutputMsg string
+
+// Modified burn-in command to return both results and output
+var runBurnInCmd tea.Cmd = func() tea.Msg {
+	results, err := burnin.RunBurnInCmd()
+	var output string
+	if results != nil {
+		// If you want to capture the output, you need to add a RawOutput field to BurnInResults in burnin.go
+		// For now, just use Duration as a placeholder (replace with actual output)
+		output = results.Duration
+	}
+	if err != nil {
+		return burnInResultMsg{results: convertBurnInResults(results), err: err}
+	}
+	// Return both result and output
+	return burnInOutputMsg(output)
+}
+
+// Message for a single line of burn-in output
+type burnInOutputLineMsg string
+
+// Live streaming burn-in command for Bubbletea
+var runBurnInStreamCmd tea.Cmd = func() tea.Msg {
+	return func() tea.Msg {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		if cancel != nil {
+			defer cancel()
+		}
+		// You may want to store cancel for later use (not shown here)
+		lines := make(chan string)
+		go func() {
+			_ = burnin.StreamBurnInCmd(ctx, func(line string) {
+				lines <- line
+			})
+			close(lines)
+		}()
+		for line := range lines {
+			return burnInOutputLineMsg(line)
+		}
+		return burnInResultMsg{results: nil, err: nil} // End of stream
+	}
+}
+
+// In Update, handle burnInOutputMsg to update the viewport
+
+// Convert burnin.BurnInResults to local burnInResults type
+func convertBurnInResults(b *burnin.BurnInResults) *burnInResults {
+	if b == nil {
+		return nil
+	}
+	return &burnInResults{
+		duration: b.Duration,
+		errors:   b.Errors,
+		success:  b.Success,
+	}
 }
 
 // Convert bench.BenchResults to local benchResults type
@@ -185,10 +247,14 @@ func (m Model) View() string {
 	tabBar := m.renderTabBar()
 
 	var content string
-	if m.activeTab == 0 {
+
+	switch m.activeTab {
+	case 0:
 		content = m.renderSysInfoTab()
-	} else {
+	case 1:
 		content = m.renderBenchmarkTab()
+	case 2:
+		content = m.renderBurnInTab()
 	}
 
 	status := style.Status.Render(m.status)
@@ -306,8 +372,19 @@ type benchResults struct {
 	duration  string
 }
 
+type burnInResults struct {
+	duration string
+	errors   int
+	success  bool
+}
+
 type benchResultMsg struct {
 	results *benchResults
+	err     error
+}
+
+type burnInResultMsg struct {
+	results *burnInResults
 	err     error
 }
 
@@ -344,18 +421,22 @@ type spdInfo struct {
 
 // --- Model struct ---
 type Model struct {
-	fields       []timingField
-	focusIndex   int
-	focusType    focusTarget
-	lockRatios   bool
-	width        int
-	height       int
-	status       string
-	activeTab    int
-	benchRunning bool
-	benchResults *benchResults
-	spd          *spdInfo
-	imcTimings   []tertiaryTimings
+	fields         []timingField
+	focusIndex     int
+	focusType      focusTarget
+	lockRatios     bool
+	width          int
+	height         int
+	status         string
+	activeTab      int
+	benchRunning   bool
+	burnInRunning  bool
+	benchResults   *benchResults
+	burnInResults  *burnInResults
+	burnInOutput   string
+	burnInViewport viewport.Model
+	spd            *spdInfo
+	imcTimings     []tertiaryTimings
 }
 
 // --- Focus target for input navigation and actions ---
@@ -402,13 +483,14 @@ func InitialModel() Model {
 	imcTimings, _ := readMCHBARTimings()
 
 	return Model{
-		fields:     fields,
-		focusIndex: 0,
-		focusType:  focusField,
-		lockRatios: true,
-		status:     detectMsg + " | Tab/Shift+Tab to move, L toggles ratio lock.",
-		spd:        spd,
-		imcTimings: imcTimings,
+		fields:         fields,
+		focusIndex:     0,
+		focusType:      focusField,
+		lockRatios:     true,
+		status:         detectMsg + " | Tab/Shift+Tab to move, L toggles ratio lock.",
+		spd:            spd,
+		imcTimings:     imcTimings,
+		burnInViewport: viewport.Model{},
 	}
 }
 
@@ -441,7 +523,7 @@ func (m *Model) fieldIndex(label string) int {
 }
 
 func (m Model) renderTabBar() string {
-	tabs := []string{"System Info", "Benchmark"}
+	tabs := []string{"System info", "Benchmark", "Burn-in"}
 	var rendered []string
 	for i, tab := range tabs {
 		if m.activeTab == i {
@@ -475,15 +557,37 @@ func (m Model) renderSysInfoTab() string {
 		fullWidth = 60
 	}
 
-	// if m.spd != nil {
-	//      parts = append(parts, "", StyleInfoPanel.Width(fullWidth).Render(m.renderSPDInfoPanel(fullWidth-4)))
-	// }
+	if m.spd != nil {
+		parts = append(parts, "", style.InfoPanel.Width(fullWidth).Render(m.renderSPDInfoPanel(fullWidth-4)))
+	}
 
 	if len(m.imcTimings) > 0 {
 		parts = append(parts, "", style.InfoPanel.Width(fullWidth).Render(m.renderIMCPanel()))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+func (m Model) renderBurnInTab() string {
+	fullWidth := m.width - 8
+	if fullWidth < 60 {
+		fullWidth = 60
+	}
+
+	var sections []string
+
+	if m.burnInRunning {
+		sections = append(sections, style.RunningBtn.Render(" Running... (30s) "))
+	} else {
+		sections = append(sections, style.RunBtn.Render(" Enter — Run Burn-in "))
+	}
+	sections = append(sections, "")
+
+	bottomPanel := style.Panel.Width(fullWidth).Render(m.burnInViewport.View())
+
+	mainContent := style.Panel.Width(fullWidth).Render(strings.Join(sections, "\n"))
+
+	return lipgloss.JoinVertical(lipgloss.Top, mainContent, bottomPanel)
 }
 
 func (m Model) renderBenchmarkTab() string {
@@ -522,6 +626,15 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case burnInOutputLineMsg:
+		m.burnInOutput += string(msg) + "\n"
+		m.burnInViewport.SetContent(m.burnInOutput)
+		// Continue streaming
+		return m, runBurnInStreamCmd
+	case burnInOutputMsg:
+		m.burnInOutput = string(msg)
+		m.burnInViewport.SetContent(m.burnInOutput)
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -533,6 +646,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.benchResults = msg.results
 			m.status = "Benchmark complete. Results shown below."
+		}
+		return m, nil
+	case burnInResultMsg:
+		m.burnInRunning = false
+		if msg.err != nil {
+			m.status = fmt.Sprintf("Burn-in failed: %v", msg.err)
+		} else {
+			m.burnInResults = msg.results
+			m.status = "Burn-in complete. Results shown below."
 		}
 		return m, nil
 	case tea.KeyMsg:
@@ -549,6 +671,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = "Benchmark results shown. Press Enter to re-run."
 			} else {
 				m.status = "Press Enter to run memrate benchmark (30s)."
+			}
+			return m, nil
+		case "f3":
+			m.activeTab = 2
+			if m.burnInResults != nil {
+				m.status = "Burn-in results shown. Press Enter to re-run."
+			} else {
+				m.status = "Press Enter to run burn-in test (30s)."
 			}
 			return m, nil
 		case "l":
@@ -578,13 +708,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "enter":
-			if m.activeTab == 1 {
+			switch m.activeTab {
+			case 1:
 				if !m.benchRunning {
 					m.benchRunning = true
 					m.status = "Running memrate benchmark (30s)..."
 					return m, runBenchmarkCmd
 				}
 				return m, nil
+			case 2:
+				if !m.burnInRunning {
+					m.burnInRunning = true
+					m.status = "Running burn-in test (30s)..."
+					return m, runBurnInCmd
+				}
 			}
 			if m.focusType == focusApply {
 				m.status = "Applied (mock): " + m.snapshotSummary()
@@ -615,7 +752,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// --- Rendering methods migrated from main.go ---
+/* --------------- Render Methods --------------- */
 
 func (m Model) renderTimingEditor(width int) string {
 	tableHeader := lipgloss.JoinHorizontal(
@@ -784,7 +921,7 @@ func (m Model) renderGuidePanel(width int) string {
 		style.Hint.Render("- Prefer JEDEC/XMP-safe bounds."),
 		"",
 		style.SectionTitle.Render("Keys"),
-		style.Hint.Render("F1 / F2            Switch tabs"),
+		style.Hint.Render("F1 / F2 / F3       Switch tabs"),
 		style.Hint.Render("Tab / Shift+Tab    Move focus"),
 		style.Hint.Render("Enter              Activate action"),
 		style.Hint.Render("L                  Toggle ratio lock"),
@@ -888,6 +1025,18 @@ func (m Model) renderIMCPanel() string {
 	return lipgloss.JoinVertical(lipgloss.Left, heading, "", strings.Join(chSections, "\n\n"))
 }
 
+func (m Model) renderSPDInfoPanel(width int) string {
+	lines := []string{
+		style.SectionTitle.Render("SPD Information"),
+		style.InfoLabel.Render("Module:") + " " + style.InfoValue.Render(m.spd.moduleManufacturer+" "+m.spd.partNumber),
+		style.InfoLabel.Render("DRAM:") + " " + style.InfoValue.Render(m.spd.dramManufacturer+" "+m.spd.memoryType),
+		style.InfoLabel.Render("Size:") + " " + style.InfoValue.Render(m.spd.sizeMB+" MB ("+m.spd.ranks+" ranks)"),
+		style.InfoLabel.Render("Speed:") + " " + style.InfoValue.Render(m.spd.moduleSpeed),
+		style.InfoLabel.Render("Timings:") + " " + style.InfoValue.Render(m.spd.timingString),
+	}
+	return lipgloss.NewStyle().Width(width).Render(strings.Join(lines, "\n"))
+}
+
 func renderChannelIMC(t tertiaryTimings) string {
 	matHdr := style.ColHeader.Render(fmt.Sprintf("  %-10s %4s %4s %4s %4s", "", "sg", "dg", "dr", "dd"))
 	matRow := func(name string, sg, dg, dr, dd int) string {
@@ -919,4 +1068,13 @@ func renderChannelIMC(t tertiaryTimings) string {
 	leftStyled := lipgloss.NewStyle().Width(38).Render(left)
 	rightStyled := lipgloss.NewStyle().Width(30).Render(right)
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, "  ", rightStyled)
+}
+
+func renderConsoleOutputStream(title string, lines <-chan string) string {
+	var styledLines []string
+	styledLines = append(styledLines, style.SectionTitle.Render(title))
+	for line := range lines {
+		styledLines = append(styledLines, style.ConsoleLine.Render(line))
+	}
+	return strings.Join(styledLines, "\n")
 }

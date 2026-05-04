@@ -85,4 +85,5 @@ var (
 	LockOff        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorLockOffFg)).Background(lipgloss.Color(ColorLockOffBg)).Padding(0, 1)
 	Metric         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorMetric))
 	MetricMuted    = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorMetricMute))
+	ConsoleLine    = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorMetric))
 )
