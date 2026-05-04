@@ -1,7 +1,9 @@
 package burnin
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 )
@@ -30,8 +32,37 @@ func ParseBurnInOutput(output string) *BurnInResults {
 
 	r := &BurnInResults{}
 
-	r.Success = true // Assume success unless we find errors in the output
+	r.Success = true
 	r.Errors = 0
-	r.Duration = "30s" // We know the Duration from the command, but you could parse it from output if needed
+	r.Duration = "30s"
 	return r
+}
+
+// StreamBurnInCmd runs the burn-in command and streams output lines via a callback.
+func StreamBurnInCmd(ctx context.Context, onLine func(string)) error {
+	cmd := exec.CommandContext(ctx, "stress-ng", "--job", "burnin-memory.job", "--log-file", "burnin.log")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	// Read both stdout and stderr
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			onLine(scanner.Text())
+		}
+	}()
+	scanner := bufio.NewScanner(stderr)
+	for scanner.Scan() {
+		onLine(scanner.Text())
+	}
+	err = cmd.Wait()
+	return err
 }

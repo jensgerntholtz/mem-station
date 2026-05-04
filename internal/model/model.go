@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"mem-station/internal/style"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -21,10 +23,52 @@ var runBenchmarkCmd tea.Cmd = func() tea.Msg {
 	return benchResultMsg{results: convertBenchResults(results), err: err}
 }
 
+// Message for burn-in output
+type burnInOutputMsg string
+
+// Modified burn-in command to return both results and output
 var runBurnInCmd tea.Cmd = func() tea.Msg {
 	results, err := burnin.RunBurnInCmd()
-	return burnInResultMsg{results: convertBurnInResults(results), err: err}
+	var output string
+	if results != nil {
+		// If you want to capture the output, you need to add a RawOutput field to BurnInResults in burnin.go
+		// For now, just use Duration as a placeholder (replace with actual output)
+		output = results.Duration
+	}
+	if err != nil {
+		return burnInResultMsg{results: convertBurnInResults(results), err: err}
+	}
+	// Return both result and output
+	return burnInOutputMsg(output)
 }
+
+// Message for a single line of burn-in output
+type burnInOutputLineMsg string
+
+// Live streaming burn-in command for Bubbletea
+var runBurnInStreamCmd tea.Cmd = func() tea.Msg {
+	return func() tea.Msg {
+		ctx, cancel := context.WithCancel(context.Background())
+
+		if cancel != nil {
+			defer cancel()
+		}
+		// You may want to store cancel for later use (not shown here)
+		lines := make(chan string)
+		go func() {
+			_ = burnin.StreamBurnInCmd(ctx, func(line string) {
+				lines <- line
+			})
+			close(lines)
+		}()
+		for line := range lines {
+			return burnInOutputLineMsg(line)
+		}
+		return burnInResultMsg{results: nil, err: nil} // End of stream
+	}
+}
+
+// In Update, handle burnInOutputMsg to update the viewport
 
 // Convert burnin.BurnInResults to local burnInResults type
 func convertBurnInResults(b *burnin.BurnInResults) *burnInResults {
@@ -377,20 +421,22 @@ type spdInfo struct {
 
 // --- Model struct ---
 type Model struct {
-	fields        []timingField
-	focusIndex    int
-	focusType     focusTarget
-	lockRatios    bool
-	width         int
-	height        int
-	status        string
-	activeTab     int
-	benchRunning  bool
-	burnInRunning bool
-	benchResults  *benchResults
-	burnInResults *burnInResults
-	spd           *spdInfo
-	imcTimings    []tertiaryTimings
+	fields         []timingField
+	focusIndex     int
+	focusType      focusTarget
+	lockRatios     bool
+	width          int
+	height         int
+	status         string
+	activeTab      int
+	benchRunning   bool
+	burnInRunning  bool
+	benchResults   *benchResults
+	burnInResults  *burnInResults
+	burnInOutput   string
+	burnInViewport viewport.Model
+	spd            *spdInfo
+	imcTimings     []tertiaryTimings
 }
 
 // --- Focus target for input navigation and actions ---
@@ -437,13 +483,14 @@ func InitialModel() Model {
 	imcTimings, _ := readMCHBARTimings()
 
 	return Model{
-		fields:     fields,
-		focusIndex: 0,
-		focusType:  focusField,
-		lockRatios: true,
-		status:     detectMsg + " | Tab/Shift+Tab to move, L toggles ratio lock.",
-		spd:        spd,
-		imcTimings: imcTimings,
+		fields:         fields,
+		focusIndex:     0,
+		focusType:      focusField,
+		lockRatios:     true,
+		status:         detectMsg + " | Tab/Shift+Tab to move, L toggles ratio lock.",
+		spd:            spd,
+		imcTimings:     imcTimings,
+		burnInViewport: viewport.Model{},
 	}
 }
 
@@ -536,7 +583,11 @@ func (m Model) renderBurnInTab() string {
 	}
 	sections = append(sections, "")
 
-	return style.Panel.Width(fullWidth).Render(strings.Join(sections, "\n"))
+	bottomPanel := style.Panel.Width(fullWidth).Render(m.burnInViewport.View())
+
+	mainContent := style.Panel.Width(fullWidth).Render(strings.Join(sections, "\n"))
+
+	return lipgloss.JoinVertical(lipgloss.Top, mainContent, bottomPanel)
 }
 
 func (m Model) renderBenchmarkTab() string {
@@ -575,6 +626,15 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case burnInOutputLineMsg:
+		m.burnInOutput += string(msg) + "\n"
+		m.burnInViewport.SetContent(m.burnInOutput)
+		// Continue streaming
+		return m, runBurnInStreamCmd
+	case burnInOutputMsg:
+		m.burnInOutput = string(msg)
+		m.burnInViewport.SetContent(m.burnInOutput)
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -1008,4 +1068,13 @@ func renderChannelIMC(t tertiaryTimings) string {
 	leftStyled := lipgloss.NewStyle().Width(38).Render(left)
 	rightStyled := lipgloss.NewStyle().Width(30).Render(right)
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, "  ", rightStyled)
+}
+
+func renderConsoleOutputStream(title string, lines <-chan string) string {
+	var styledLines []string
+	styledLines = append(styledLines, style.SectionTitle.Render(title))
+	for line := range lines {
+		styledLines = append(styledLines, style.ConsoleLine.Render(line))
+	}
+	return strings.Join(styledLines, "\n")
 }
