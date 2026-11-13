@@ -64,6 +64,14 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		m.resetDraft()
 		return message("Draft reset to the applied values.", ui.LevelInfo)
+	case key.Matches(msg, m.keys.Inc):
+		if m.subView == subTimings {
+			return m.adjust(1)
+		}
+	case key.Matches(msg, m.keys.Dec):
+		if m.subView == subTimings {
+			return m.adjust(-1)
+		}
 	case key.Matches(msg, m.keys.Up):
 		if m.subView == subTimings {
 			m.moveFocus(-1)
@@ -77,8 +85,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.scrollActive(1)
 		}
 	case key.Matches(msg, m.keys.Edit):
-		if m.subView == subTimings {
-			m.startEditing()
+		if m.subView == subTimings && !m.startEditing() {
+			f := m.fields[m.focus]
+			if opts := m.presetValues(f); len(opts) > 0 {
+				return message(f.Label+": use ←/→ to choose "+strings.Join(opts, ", "), ui.LevelInfo)
+			}
 		}
 	case key.Matches(msg, m.keys.Next):
 		if m.subView == subTimings {
@@ -121,14 +132,19 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 
 /* --------------- Editing --------------- */
 
-func (m *Model) startEditing() {
+func (m *Model) startEditing() bool {
 	i := m.focus
 	f := m.fields[i]
+	if f.Kind == KindEnum {
+		// Enum fields are preset-only: ←/→ cycles their allowed values.
+		return false
+	}
 	m.editing = true
 	m.editPrev = m.draft[f.ID]
 	m.input.SetValue(m.editPrev)
 	m.input.CursorEnd()
 	m.input.Focus()
+	return true
 }
 
 // commitEdit ends editing and applies the frequency ratio lock, if the edited
@@ -162,6 +178,115 @@ func (m *Model) moveFocus(delta int) {
 	m.focus = ((m.focus+delta)%n + n) % n
 }
 
+// adjust changes the selected value. Fields with allowed values (enum fields
+// and the SPD frequency list) cycle through them; other numeric fields move by
+// their declared Step. Frequency changes honour the ratio lock.
+func (m *Model) adjust(delta int) tea.Cmd {
+	f := m.fields[m.focus]
+	previous := strings.TrimSpace(m.draft[f.ID])
+
+	if opts := m.presetValues(f); len(opts) > 0 {
+		next := cyclePreset(opts, previous, delta)
+		if next == "" || next == previous {
+			return nil
+		}
+		m.draft[f.ID] = next
+		if f.ID == FieldFreq {
+			m.rescaleFromFrequency(previous)
+		}
+		return nil
+	}
+	if f.Kind == KindEnum {
+		return nil
+	}
+
+	value, ok := parseNumber(previous)
+	if !ok {
+		if delta < 0 {
+			return nil
+		}
+		value, _ = parseNumber(f.Default)
+	}
+	step := f.Step
+	if step <= 0 {
+		step = 1
+	}
+	base := math.Round(value/step) * step
+	next := base + float64(delta)*step
+	if next < 0 {
+		next = 0
+	}
+	if !ok && next == 0 {
+		next = step
+	}
+	m.draft[f.ID] = formatScaled(f, next)
+	if f.ID == FieldFreq {
+		m.rescaleFromFrequency(previous)
+	}
+	return nil
+}
+
+// presetValues returns the allowed/suggested values for a field. Enum fields
+// are strict; the frequency list comes from the detected SPD profiles and is
+// advisory because a custom frequency can still be typed with Enter.
+func (m *Model) presetValues(f Field) []string {
+	if f.Kind == KindEnum {
+		return f.Options
+	}
+	if f.ID == FieldFreq && m.spd != nil {
+		return m.spd.SupportedFrequencies()
+	}
+	return nil
+}
+
+// cyclePreset moves through options by delta, wrapping at the ends. A custom
+// current value (one not in the list) moves to the next higher or lower option
+// rather than jumping to the first entry.
+func cyclePreset(options []string, current string, delta int) string {
+	if len(options) == 0 {
+		return ""
+	}
+	current = strings.TrimSpace(current)
+	index := -1
+	for i, opt := range options {
+		if strings.EqualFold(opt, current) {
+			index = i
+			break
+		}
+	}
+	if index >= 0 {
+		next := ((index+delta)%len(options) + len(options)) % len(options)
+		return options[next]
+	}
+	if value, ok := parseNumber(current); ok {
+		best := -1
+		bestDistance := math.Inf(1)
+		for i, opt := range options {
+			n, ok := parseNumber(opt)
+			if !ok {
+				continue
+			}
+			distance := n - value
+			if delta > 0 && distance <= 0 {
+				continue
+			}
+			if delta < 0 && distance >= 0 {
+				continue
+			}
+			if math.Abs(distance) < bestDistance {
+				best, bestDistance = i, math.Abs(distance)
+			}
+		}
+		if best >= 0 {
+			return options[best]
+		}
+	}
+	if delta < 0 {
+		return options[len(options)-1]
+	}
+	return options[0]
+}
+
 // resetDraft restores every field to its baseline (applied, detected, default).
 func (m *Model) resetDraft() {
 	for _, f := range m.fields {
@@ -175,10 +300,51 @@ func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
 	if !m.editing {
 		return nil
 	}
+	f := m.fields[m.focus]
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && len(keyMsg.Runes) > 0 {
+		keyMsg.Runes = filterInputRunes(f, keyMsg.Runes, m.input.Value())
+		if len(keyMsg.Runes) == 0 {
+			return nil
+		}
+		msg = keyMsg
+	}
 	updated, cmd := m.input.Update(msg)
+	if sanitized := filterInputText(f, updated.Value()); sanitized != updated.Value() {
+		updated.SetValue(sanitized)
+		updated.CursorEnd()
+	}
 	m.input = updated
-	m.draft[m.fields[m.focus].ID] = m.input.Value()
+	m.draft[f.ID] = m.input.Value()
 	return cmd
+}
+
+// filterInputRunes rejects characters a numeric field cannot store. Integers
+// accept digits only; floats additionally accept one decimal point.
+func filterInputRunes(f Field, runes []rune, existing string) []rune {
+	if f.Kind != KindInt && f.Kind != KindFloat {
+		return runes
+	}
+	out := make([]rune, 0, len(runes))
+	dot := strings.Contains(existing, ".")
+	for _, r := range runes {
+		switch {
+		case r >= '0' && r <= '9':
+			out = append(out, r)
+		case r == '.' && f.Kind == KindFloat && !dot:
+			out = append(out, r)
+			dot = true
+		}
+	}
+	return out
+}
+
+// filterInputText applies the same rule to an already-inserted value (for
+// example a paste) without changing valid characters.
+func filterInputText(f Field, value string) string {
+	if f.Kind != KindInt && f.Kind != KindFloat {
+		return value
+	}
+	return string(filterInputRunes(f, []rune(value), ""))
 }
 
 // rescaleFromFrequency scales the frequency-bound drafts by the ratio between

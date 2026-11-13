@@ -38,6 +38,7 @@ var infoKeys = []string{
 func runInfo(deps Deps, args []string) int {
 	fs := newFlagSet("info", deps)
 	asJSON := fs.Bool("json", false, "print one JSON object on stdout")
+	withIMC := fs.Bool("imc", false, "read raw IMC registers (root; may need iomem=relaxed)")
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -47,11 +48,15 @@ func runInfo(deps Deps, args []string) int {
 	}
 
 	values, msg, spd := deps.Detect()
-	timings, imcErr := deps.ReadIMC()
-
-	doc := infoDocument{Values: values, Message: msg, SPD: spd, IMC: timings}
-	if imcErr != nil {
-		doc.IMCError = imcErr.Error()
+	doc := infoDocument{Values: values, Message: msg, SPD: spd}
+	if *withIMC {
+		timings, imcErr := deps.ReadIMC()
+		doc.IMC = timings
+		if imcErr != nil {
+			doc.IMCError = imcErr.Error()
+		}
+	} else {
+		doc.IMCError = "not requested (pass -imc to read raw registers; needs root and may need iomem=relaxed)"
 	}
 	if *asJSON {
 		if err := writeJSON(deps.Stdout, doc); err != nil {
@@ -88,7 +93,7 @@ func printInfoHuman(deps Deps, doc infoDocument) {
 	if len(doc.IMC) == 0 {
 		reason := doc.IMCError
 		if reason == "" {
-			reason = "no channels readable (needs root and iomem=relaxed)"
+			reason = "no channels readable"
 		}
 		fmt.Fprintf(deps.Stdout, "\nIMC\n  unavailable: %s\n", reason)
 		return

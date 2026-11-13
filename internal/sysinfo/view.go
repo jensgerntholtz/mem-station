@@ -318,7 +318,7 @@ func (m *Model) editorHint(scrollable bool) string {
 	if m.lockRatios {
 		lock = "on"
 	}
-	text := fmt.Sprintf("ctrl+s apply - ctrl+r reset - l lock[%s]", lock)
+	text := fmt.Sprintf("←/→ adjust - ctrl+s apply - ctrl+r reset - l lock[%s]", lock)
 	if scrollable {
 		text = "more fields - " + text
 	}
@@ -341,6 +341,15 @@ func (m *Model) guideBody(width int) string {
 	lines = append(lines, m.derivedLines()...)
 
 	lines = append(lines, "", style.Section().Render(f.Label), style.Muted().Render(ui.Truncate(f.Desc, width, true)))
+	if opts := m.presetValues(f); len(opts) > 0 {
+		lines = append(lines, style.Muted().Render("values: "+ui.Truncate(strings.Join(opts, ", "), max(1, width-8), true)))
+	} else if f.Kind != KindEnum && f.Step > 0 {
+		step := formatNumber(f.Step)
+		if f.Unit != "" {
+			step += " " + f.Unit
+		}
+		lines = append(lines, style.Muted().Render("step: "+step+" (←/→)"))
+	}
 	if f.Bounds != nil {
 		if label := f.Bounds(ctx).Label(); label != "" {
 			lines = append(lines, style.Muted().Render("safe: "+ui.Truncate(label, max(1, width-6), true)))

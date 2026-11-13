@@ -59,8 +59,11 @@ type Options struct {
 	StateDir   string
 	Dark       bool
 	Mouse      bool
-	Version    string
-	Detect     func() (map[string]string, string, *memory.SPDInfo)
+	// IMC enables the raw MCHBAR register read at startup. It is opt-in
+	// because /dev/mem access may require iomem=relaxed.
+	IMC     bool
+	Version string
+	Detect  func() (map[string]string, string, *memory.SPDInfo)
 }
 
 // DefaultOptions returns the production defaults.
@@ -68,6 +71,7 @@ func DefaultOptions() Options {
 	return Options{
 		Version: Version,
 		Dark:    true,
+		IMC:     false,
 		Detect:  memory.DetectDefaults,
 	}
 }
@@ -93,6 +97,7 @@ type Model struct {
 	helpOpen   bool
 	helpOffset int
 
+	imcRequested  bool
 	tickScheduled bool
 }
 
@@ -162,6 +167,7 @@ func (m *Model) HelpSections() []ui.HelpSection {
 			{Key: "esc", Action: "close help"},
 			{Key: "R", Action: "retry detection (unprivileged)"},
 			{Key: "E", Action: "elevate detection with sudo"},
+			{Key: "I", Action: "read raw IMC registers (opt-in)"},
 			{Key: "ctrl+c", Action: "cancel a running job, else quit"},
 			{Key: "q", Action: "quit"},
 		},

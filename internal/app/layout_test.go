@@ -178,9 +178,9 @@ func TestTimingsSubViewsAreExactSize(t *testing.T) {
 	}
 }
 
-// TestEditingOwnsLetterKeys guards the Phase 0 fix: while a field is being
-// edited, letters type instead of triggering global actions, and digits do not
-// switch tabs.
+// TestEditingOwnsLetterKeys guards the Phase 0 fix: while a numeric field is
+// being edited, letters do not trigger global actions and digits do not switch
+// tabs. Numeric masking may ignore the letter, but it must never act on it.
 func TestEditingOwnsLetterKeys(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
@@ -196,8 +196,11 @@ func TestEditingOwnsLetterKeys(t *testing.T) {
 	if m.active != 0 {
 		t.Errorf("digit while editing switched tab to %d", m.active)
 	}
-	if out := m.View(); !strings.Contains(out, "2q") {
-		t.Errorf("typed characters missing from the draft field")
+	if out := m.View(); !strings.Contains(out, "22") {
+		t.Errorf("typed digit missing from the draft field:\n%s", out)
+	}
+	if strings.Contains(m.View(), "2q") {
+		t.Error("numeric field accepted a letter")
 	}
 }
 

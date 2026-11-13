@@ -186,7 +186,7 @@ func TestRunTUIOptions(t *testing.T) {
 	}
 
 	code := Run([]string{
-		"tui", "--tab=burn-in", "--dark=false", "--no-color", "--mouse",
+		"tui", "--tab=burn-in", "--dark=false", "--no-color", "--mouse", "--imc",
 		"--state-dir", "/tmp/state", "--job", "/tmp/job", "--version=false",
 	}, deps)
 	if code != ExitOK {
@@ -203,6 +203,9 @@ func TestRunTUIOptions(t *testing.T) {
 	}
 	if !got.Mouse {
 		t.Error("Mouse = false, want mouse enabled")
+	}
+	if !got.IMC {
+		t.Error("IMC = false, want the --imc opt-in")
 	}
 	if got.StateDir != "/tmp/state" || got.JobPath != "/tmp/job" {
 		t.Errorf("options = %+v", got)
@@ -245,7 +248,7 @@ func TestInfoJSON(t *testing.T) {
 	jobs := &fakeRunner{}
 	deps, stdout, stderr := testDeps(t, jobs)
 
-	if code := Run([]string{"info", "-json"}, deps); code != ExitOK {
+	if code := Run([]string{"info", "-json", "-imc"}, deps); code != ExitOK {
 		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitOK, stderr.String())
 	}
 	var doc infoDocument
@@ -268,7 +271,7 @@ func TestInfoHuman(t *testing.T) {
 	jobs := &fakeRunner{}
 	deps, stdout, _ := testDeps(t, jobs)
 
-	if code := Run([]string{"info"}, deps); code != ExitOK {
+	if code := Run([]string{"info", "-imc"}, deps); code != ExitOK {
 		t.Fatalf("exit = %d, want %d", code, ExitOK)
 	}
 	out := stdout.String()
@@ -276,6 +279,31 @@ func TestInfoHuman(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("info output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+// TestInfoDoesNotReadIMCByDefault checks the safe default: raw /dev/mem access
+// must be an explicit opt-in.
+func TestInfoDoesNotReadIMCByDefault(t *testing.T) {
+	jobs := &fakeRunner{}
+	deps, stdout, _ := testDeps(t, jobs)
+	deps.ReadIMC = func() ([]memory.IMCTimings, error) {
+		t.Fatal("info read IMC without -imc")
+		return nil, nil
+	}
+
+	if code := Run([]string{"info", "-json"}, deps); code != ExitOK {
+		t.Fatalf("exit = %d, want %d", code, ExitOK)
+	}
+	var doc infoDocument
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("info output is not one JSON document: %v", err)
+	}
+	if len(doc.IMC) != 0 {
+		t.Errorf("IMC = %+v, want no raw read by default", doc.IMC)
+	}
+	if !strings.Contains(doc.IMCError, "-imc") {
+		t.Errorf("IMCError = %q, want the opt-in hint", doc.IMCError)
 	}
 }
 

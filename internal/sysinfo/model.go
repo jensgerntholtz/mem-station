@@ -150,6 +150,7 @@ func New() *Model {
 		input:      in,
 		prompt:     prompt,
 		lockRatios: true,
+		imcNote:    "Raw MCHBAR registers are opt-in; press I to read them.",
 		spdVP:      viewport.New(60, 10),
 		imcVP:      viewport.New(60, 10),
 		keys:       DefaultKeyMap(),

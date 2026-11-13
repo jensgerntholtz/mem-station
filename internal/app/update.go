@@ -19,13 +19,16 @@ const clearStatusAfter = 5 * time.Second
 
 // Init starts async detection plus any tab startup commands.
 func (m *Model) Init() tea.Cmd {
-	cmd := tea.Batch(
+	cmds := []tea.Cmd{
 		m.detectCmd(),
-		imcCmd(),
 		m.tabs[0].Init(),
 		m.tabs[1].Init(),
 		m.tabs[2].Init(),
-	)
+	}
+	if m.opts.IMC {
+		cmds = append(cmds, imcCmd())
+	}
+	cmd := tea.Batch(cmds...)
 	m.status = "Detecting hardware..."
 	m.level = ui.LevelInfo
 	return cmd
@@ -148,6 +151,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.retryDetection()
 	case key.Matches(msg, m.keys.Elevate):
 		return m.elevateCmd()
+	case key.Matches(msg, m.keys.IMC):
+		m.imcRequested = true
+		return tea.Batch(imcCmd(), m.setStatus("Reading IMC registers (root; iomem=relaxed may be required)...", ui.LevelInfo))
 	case key.Matches(msg, m.keys.Tab1):
 		m.switchTab(0)
 		return nil

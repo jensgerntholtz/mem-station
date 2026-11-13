@@ -106,16 +106,18 @@ func TestElevateKeyStartsElevation(t *testing.T) {
 	}
 }
 
-// TestElevateKeyIsTypedWhileEditing checks the editing gate: E types into the
-// field instead of starting a sudo run.
-func TestElevateKeyIsTypedWhileEditing(t *testing.T) {
+// TestElevateKeyIsIgnoredWhileEditing checks the editing gate: E must not
+// start a sudo run while a numeric field owns the keyboard.
+func TestElevateKeyIsIgnoredWhileEditing(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // start editing the first field
 
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
-
-	if !strings.Contains(m.View(), "2E") {
-		t.Error("E was not typed into the edited field")
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	if cmd != nil {
+		t.Error("E started elevation while a field was being edited")
+	}
+	if strings.Contains(m.View(), "2E") {
+		t.Error("numeric field accepted a letter")
 	}
 }

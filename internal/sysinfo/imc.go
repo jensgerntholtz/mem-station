@@ -14,13 +14,18 @@ import (
 // imcLines renders the IMC register dump: one block per memory channel with
 // the turnaround matrix and the raw decoded register values.
 func (m *Model) imcLines() []string {
-	lines := []string{style.Section().Render("IMC Tertiary Timings (Haswell)")}
+	title := "IMC Tertiary Timings"
+	if len(m.imc) > 0 && m.imc[0].Platform != "" {
+		title += " · " + m.imc[0].Platform
+	}
+	lines := []string{style.Section().Render(title)}
 	if m.imcNote != "" {
 		lines = append(lines, style.Warning().Render(m.imcNote))
 	}
 	if len(m.imc) == 0 {
 		lines = append(lines, "",
-			style.Muted().Render("No IMC data. Reading MCHBAR needs root and the iomem=relaxed kernel parameter."),
+			style.Muted().Render("No IMC data. Raw MCHBAR reads are opt-in; press I to try."),
+			style.Muted().Render("They need root and may need the iomem=relaxed kernel parameter."),
 		)
 		return lines
 	}
@@ -51,7 +56,12 @@ func (m *Model) channelIMC(t memory.IMCTimings) string {
 		{"tCKE", cell(t.TCKE)},
 		{"tREFI", cell(t.TREFI)},
 		{"tRFC", cell(t.TRFC)},
-	}, []int{14, 6})
+		{"tRRD", cell(t.TRRD)},
+		{"tFAW", cell(t.TFAW)},
+		{"tAA / tCWL", fmt.Sprintf("%d/%d", t.TAA, t.TCWL)},
+		{"tWR", cell(t.TWR)},
+		{"tCMD", cell(t.TCMD)},
+	}, []int{14, 8})
 
 	left := style.Section().Render(fmt.Sprintf("Channel %d - Turnaround", t.Channel)) + "\n" + matrix
 	right := style.Section().Render("Register Values") + "\n" + registers
