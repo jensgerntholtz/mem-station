@@ -117,6 +117,17 @@ Expected:
   - `ctrl+e` in Burn-in: the embedded preset explains that `--job PATH` is
     needed; a custom job file opens in `$EDITOR` and is reloaded on return.
   - The terminal progress bar appears only while a bench/burn-in is running.
+- `report`:
+  - `mem-station report` on a terminal renders with glamour; `NO_COLOR=1` gives
+    plain rendered text.
+  - `mem-station report > report.md` writes raw Markdown (starts with
+    `# MemStation report`, no ANSI) that GitHub/pandoc can read.
+  - `--style dark` forces styling even when piped; `--style raw` writes the
+    source on a terminal.
+  - `report --json` parses as one document whose `hardware` section matches
+    `info --json`; `--json --markdown` and `--history 0` exit `2`.
+  - A machine with no SPD, no applied profile and no runs still produces every
+    section with an explanation instead of an empty document.
 
 CI (`.github/workflows/ci.yml`) runs gofmt, `go vet ./...`, `go build ./...`,
 and `go test ./... -count=1` on `ubuntu-latest`. CI does not run hardware, the

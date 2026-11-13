@@ -2,39 +2,18 @@ package cli
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"mem-station/internal/memory"
+	"mem-station/internal/report"
 	"mem-station/internal/ui"
 
 	"github.com/spf13/cobra"
 )
 
-// infoDocument is the stable JSON document `info -json` prints.
-type infoDocument struct {
-	Values   map[string]string   `json:"values"`
-	Message  string              `json:"message"`
-	SPD      *memory.SPDInfo     `json:"spd,omitempty"`
-	IMC      []memory.IMCTimings `json:"imc,omitempty"`
-	IMCError string              `json:"imc_error,omitempty"`
-}
-
-// infoKeys is the display order of the detected values. Keys that are not listed
-// (future detection fields) are printed afterwards in alphabetical order so
-// nothing is ever dropped from the output.
-var infoKeys = []string{
-	"Channels",
-	"DRAM Ratio",
-	"DRAM Freq",
-	"CAS (tCL)",
-	"tRCD",
-	"tRP",
-	"tRAS",
-	"Command Rate",
-	"tRFC",
-	"DRAM Voltage",
-}
+// infoDocument is the stable JSON document `info -json` prints. It is the same
+// type the report uses, so the two can never drift apart.
+type infoDocument = report.Hardware
 
 // infoOptions are the flags of the info command.
 type infoOptions struct {
@@ -94,7 +73,7 @@ func printInfoHuman(deps Deps, doc infoDocument) {
 	if len(doc.Values) == 0 {
 		fmt.Fprintln(deps.Stdout, "  no values detected (try running with sudo)")
 	}
-	for _, key := range orderedKeys(doc.Values) {
+	for _, key := range report.OrderedValues(doc.Values) {
 		if v := strings.TrimSpace(doc.Values[key]); v != "" {
 			fmt.Fprintf(deps.Stdout, "  %-16s %s\n", key, v)
 		}
@@ -149,24 +128,4 @@ func printSPD(deps Deps, spd *memory.SPDInfo) {
 			fmt.Fprintf(deps.Stdout, "  %-20s %s\n", "JEDEC profile", ui.Truncate(v, 60, false))
 		}
 	}
-}
-
-// orderedKeys returns the known keys first, then any extra key alphabetically.
-func orderedKeys(values map[string]string) []string {
-	seen := make(map[string]bool, len(values))
-	keys := make([]string, 0, len(values))
-	for _, k := range infoKeys {
-		if _, ok := values[k]; ok {
-			keys = append(keys, k)
-			seen[k] = true
-		}
-	}
-	extra := make([]string, 0, len(values))
-	for k := range values {
-		if !seen[k] {
-			extra = append(extra, k)
-		}
-	}
-	sort.Strings(extra)
-	return append(keys, extra...)
 }

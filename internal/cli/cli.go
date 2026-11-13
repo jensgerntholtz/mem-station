@@ -252,7 +252,7 @@ MSRs, BIOS, or hardware timings.`,
 	bindTUIFlags(tuiCmd.Flags(), &tuiOpts)
 	root.AddCommand(tuiCmd)
 
-	root.AddCommand(newInfoCmd(deps), newBenchCmd(deps), newBurninCmd(deps))
+	root.AddCommand(newInfoCmd(deps), newBenchCmd(deps), newBurninCmd(deps), newReportCmd(deps))
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version and exit",

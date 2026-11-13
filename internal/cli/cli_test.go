@@ -15,7 +15,9 @@ import (
 	"mem-station/internal/app"
 	"mem-station/internal/benchmark"
 	"mem-station/internal/burnin"
+	"mem-station/internal/config"
 	"mem-station/internal/memory"
+	"mem-station/internal/report"
 	"mem-station/internal/runner"
 	"mem-station/internal/store"
 )
@@ -664,5 +666,106 @@ func TestQuietSuppressesWarnings(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("stderr = %q, want nothing with -q", stderr.String())
+	}
+}
+
+// TestReportJSON checks the report reuses the info and profile schemas instead
+// of inventing new ones.
+func TestReportJSON(t *testing.T) {
+	jobs := &fakeRunner{}
+	deps, stdout, stderr := testDeps(t, jobs)
+	if err := store.SaveActiveProfile(config.Profile{
+		Name:   "active",
+		Values: map[string]string{"tCL": "16", "tRCD": "18"},
+	}); err != nil {
+		t.Fatalf("SaveActiveProfile: %v", err)
+	}
+
+	if code := Run([]string{"report", "-json"}, deps); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitOK, stderr.String())
+	}
+	var doc report.Document
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("report output is not one JSON document: %v\n%s", err, stdout.String())
+	}
+	if got := doc.Hardware.Values["DRAM Freq"]; got != "3200" {
+		t.Errorf("hardware values = %v, want the injected detection result", doc.Hardware.Values)
+	}
+	if doc.Version != "9.9.9-test" {
+		t.Errorf("version = %q", doc.Version)
+	}
+	if doc.Profile == nil || doc.Profile.Values["tCL"] != "16" {
+		t.Errorf("profile = %+v, want the applied profile", doc.Profile)
+	}
+	if len(doc.History) != 0 {
+		t.Errorf("history = %v, want none", doc.History)
+	}
+	if !strings.Contains(doc.Hardware.IMCError, "-imc") {
+		t.Errorf("IMCError = %q, want the opt-in hint", doc.Hardware.IMCError)
+	}
+	if doc.GeneratedAt.IsZero() {
+		t.Error("generated_at is zero")
+	}
+}
+
+// TestReportMarkdownIsPlainWhenPiped checks the default style degrades to plain
+// text, and that an explicit style still asks for colour.
+func TestReportMarkdownIsPlainWhenPiped(t *testing.T) {
+	jobs := &fakeRunner{}
+	deps, stdout, stderr := testDeps(t, jobs)
+
+	if code := Run([]string{"report", "--markdown"}, deps); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitOK, stderr.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "\x1b[") {
+		t.Errorf("piped report contains ANSI escapes:\n%q", out)
+	}
+	if !strings.HasPrefix(out, "# MemStation report") {
+		t.Errorf("piped report is not the Markdown source:\n%s", out)
+	}
+	for _, want := range []string{"MemStation report", "Hardware", "SPD", "Profile only"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("report missing %q:\n%s", want, out)
+		}
+	}
+
+	stdout.Reset()
+	if code := Run([]string{"report", "--style", "dark"}, deps); code != ExitOK {
+		t.Fatalf("dark exit = %d (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "\x1b[") {
+		t.Error("an explicit --style dark did not emit any styling")
+	}
+
+	stdout.Reset()
+	t.Setenv("NO_COLOR", "1")
+	if code := Run([]string{"report"}, deps); code != ExitOK {
+		t.Fatalf("NO_COLOR exit = %d", code)
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Errorf("NO_COLOR report contains ANSI escapes:\n%q", stdout.String())
+	}
+}
+
+// TestReportFlagValidation covers the mutually exclusive output flags and the
+// history bound.
+func TestReportFlagValidation(t *testing.T) {
+	jobs := &fakeRunner{}
+	deps, stdout, stderr := testDeps(t, jobs)
+
+	for _, args := range [][]string{
+		{"report", "--json", "--markdown"},
+		{"report", "--history", "0"},
+	} {
+		if code := Run(args, deps); code != ExitUsage {
+			t.Errorf("%v exit = %d, want %d", args, code, ExitUsage)
+		}
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("usage errors wrote to stdout: %q", stdout.String())
+	}
+	if !containsFold(stderr.String(), "exclusive") && !containsFold(stderr.String(), "at least 1") {
+		t.Errorf("stderr = %q, want an explanation", stderr.String())
 	}
 }

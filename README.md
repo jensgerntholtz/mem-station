@@ -178,7 +178,20 @@ mem-station bench -duration 30s -json -out ./bench.json
 
 mem-station burnin -duration 30m -preset memory-heavy
 mem-station burnin -duration 5m -job ./my.job -json -out ./burnin.json
+
+mem-station report                     # hardware + profile + history, styled
+mem-station report > report.md         # the Markdown source, piped
+mem-station report --json              # the same content as one JSON document
+mem-station report --imc --history 5   # opt-in registers, five recent runs
 ```
+
+`report` renders Markdown for a terminal and prints the Markdown source when
+stdout is not a terminal, so redirecting it produces a file GitHub or pandoc can
+read. `--style` forces a rendering (`raw`, `dark`, `light`, `notty`, `ascii`,
+`pink`, `dracula`, `tokyo-night`); `--json` embeds the same documents `info
+--json`, the profile store and `history.jsonl` already use, rather than a new
+schema. Detection failures are reported in the document instead of failing the
+command.
 
 Exit codes: `0` success (a passed run for `burnin`, a parsed run for `bench`),
 `1` the run failed, `2` usage error, `130` interrupted. A failed run exits `1`
@@ -188,10 +201,10 @@ errors are printed by fang on stderr.
 `SIGINT`/`SIGTERM` cancel the running job's process group and still report the
 runner's terminal state, so a script sees `cancelled` rather than a hang.
 
-Headless runs record the *applied* profile as their configuration and never run
-hardware detection; use `mem-station info` for detection. `bench` and `burnin`
-print the log path they wrote; `-out PATH` additionally writes the same JSON
-document to a path you choose.
+`bench` and `burnin` record the *applied* profile as their configuration and
+never run hardware detection; `info` and `report` are the detection commands.
+`bench` and `burnin` print the log path they wrote; `-out PATH` additionally
+writes the same JSON document to a path you choose.
 
 ## State directory
 

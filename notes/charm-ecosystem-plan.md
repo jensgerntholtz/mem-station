@@ -1,9 +1,9 @@
 # Plan: lean into the Charmbracelet ecosystem
 
-Status: P0 (guardrails), P1 (v2 stack migration), P2 (CLI: fang/log/tone) and
-P3 (overlay, pickers, progress, $EDITOR) are **done**. P4 onward is open; the one
-deliberate omission in P3 is the bubbles/table history migration, with the
-measurement recorded there.
+Status: P0 (guardrails), P1 (v2 stack migration), P2 (CLI: fang/log/tone),
+P3 (overlay, pickers, progress, $EDITOR) and P4 (`report` via glamour) are
+**done**. P5 (docs/demos/CI) is open. Two deliberate omissions are recorded in
+place: the bubbles/table history migration and the help-pane docs renderer.
 Scope: which `github.com/charmbracelet` repos and libraries apply to MemStation,
 what each buys us, and in what order to adopt them.
 
@@ -35,7 +35,7 @@ Three tiers.
 
 | Library | Why |
 | --- | --- |
-| `glamour` v2 (`charm.land/glamour/v2` v2.0.1) | `mem-station report` renders profile/SPD/history as styled markdown; optionally render `notes/*.md` inside the help overlay. |
+| `glamour` v2 (`charm.land/glamour/v2` v2.0.1) | `mem-station report` renders hardware/profile/history as styled Markdown. Done (P4); the help-pane docs renderer was dropped. |
 | `x/editor` (v0.2.0) | Open burn-in job files in `$EDITOR` through `tea.ExecProcess`. Done (P3). |
 | `filepicker` / `list` (bubbles v2) | Replace typed-name prompts for load and import. Done (P3). `table` was measured and deliberately skipped — see P3. |
 
@@ -87,7 +87,7 @@ All 57 repos returned by `GET /orgs/charmbracelet/repos` (Nov 2026), plus the
 | `log` → `charm.land/log/v2` | v2.0.1 | done: `--log-file`, `-v`/`-q`, structured run events |
 | `charm` (tool + library) | v0.x | no: wraps fang for a different set of conveniences |
 | `huh` → `charm.land/huh/v2` | v2.0.3 | deferred; first-run wizard only |
-| `glamour` → `charm.land/glamour/v2` | v2.0.1 | **P4** `report` command, docs pane |
+| `glamour` → `charm.land/glamour/v2` | v2.0.1 | done (P4): `report` command |
 | `harmonica` | v0.2.0 | no |
 | `wish`, `promwish` | v2.0.5 / v0.x | no: MemStation is a local terminal tool; no SSH serving surface |
 | `skate` | v0.x | no: state is structured profiles/history, not a KV store |
@@ -275,19 +275,41 @@ Tests/goldens: new `profile_picker_118x37` golden (seeded with three profiles);
 The import browser has no golden because it renders an absolute directory —
 it is covered by a content/size test instead.
 
-### P4 — Reports: glamour v2 (2-3 days, separate branch)
+### P4 — Reports: glamour v2 — **done**
 
-- `mem-station report [--json|--markdown]`: render the applied profile, SPD,
-  IMC availability and recent history as glamour markdown.
-- Optional: a `notes` pane in the help overlay rendering the repo docs with
-  glamour (offline, embedded via `go:embed`).
+Landed in the `report:` commit. Module added: `charm.land/glamour/v2 v2.0.1`.
 
-Prerequisite: bubbletea v2 / lipgloss v2 (P1), because glamour v2 sits on the
-same lipgloss v2 color stack.
+- `internal/report` owns the document and its Markdown. `report.Hardware` is now
+  the single definition of the hardware JSON shape: `info --json`, the TUI's
+  elevation payload (`app/elevate.go` aliases it) and `report --json` all use it,
+  so those three can no longer drift. `ValueOrder`/`OrderedValues` moved there
+  too.
+- `report.Document` = generated time, version, hardware, applied profile
+  (`config.Profile`) and `store.Record` history. The JSON form nests the existing
+  schemas rather than inventing a second one.
+- Markdown covers hardware (ordered, unknown keys appended alphabetically), SPD,
+  IMC availability, the applied profile and recent runs; pipes are escaped so a
+  value cannot break a table. History is sorted newest-first in UTC so the
+  output is timezone-independent.
+- `mem-station report` renders with glamour v2 (`WithWordWrap(80)`,
+  `WithTableWrap(true)`). Style resolution: a terminal gets the dark theme,
+  `NO_COLOR` on a terminal gets `notty`, and **a pipe or file gets the raw
+  Markdown source**, so `report > report.md` is a real document. `--style`
+  overrides all of that (`raw`, `dark`, `light`, `notty`, `ascii`, `pink`,
+  `dracula`, `tokyo-night`).
+- `--json` and `--markdown` are mutually exclusive, `--history` defaults to 10
+  and must be at least 1, and detection/read failures land in the document
+  (hardware message, `imc_error`) instead of failing the command — same contract
+  as `info`.
 
-Acceptance: `mem-station report --markdown` is readable with `NO_COLOR=1` and
-under a 16-color terminal, degrades to plain text when piped, and the JSON form
-reuses the existing export schema rather than inventing a second one.
+Not done: the optional "notes pane" in the help overlay. Rendering repo docs
+inside a TUI dialog is a different feature from a report command, and the
+overlay work in P3 made it easy to add later if it is wanted.
+
+Verified: `report` piped is raw Markdown with no ANSI; on a pty it renders with
+glamour; `--style dark` forces styling even when piped; `NO_COLOR=1` yields
+plain rendered text. Golden `internal/report/testdata/report_full.md.golden`
+pins the whole document.
 
 ### P5 — Docs, demos and CI (1-2 days)
 
@@ -342,9 +364,8 @@ Already covered by P1, so the manual matrix no longer needs to prove it:
 
 ## 5. Recommended next slice
 
-P4: `glamour` v2 for a `mem-station report --markdown` command that renders the
-applied profile, SPD, IMC availability and recent history, reusing the existing
-export schema instead of inventing a second one.
+P5: VHS tapes for the README (timings edit, pickers, burn-in), `vhs-action` on
+release, and a CI golden-drift guard. Nothing there changes runtime behaviour.
 
 ## 6. Open questions
 

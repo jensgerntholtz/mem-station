@@ -9,22 +9,17 @@ import (
 	"os/exec"
 	"strings"
 
-	"mem-station/internal/memory"
+	"mem-station/internal/report"
 	"mem-station/internal/ui"
 
 	tea "charm.land/bubbletea/v2"
 )
 
-// elevationDocument mirrors the stable `mem-station info -json` payload (see
-// internal/cli/info.go). The shell decodes it instead of importing the CLI
-// package, so the dependency direction stays app -> tabs only.
-type elevationDocument struct {
-	Values   map[string]string   `json:"values"`
-	Message  string              `json:"message"`
-	SPD      *memory.SPDInfo     `json:"spd"`
-	IMC      []memory.IMCTimings `json:"imc"`
-	IMCError string              `json:"imc_error"`
-}
+// elevationDocument mirrors the stable `mem-station info -json` payload. The
+// shell decodes the shared report document instead of importing the CLI
+// package, so the dependency direction stays app -> tabs only and the shape
+// cannot drift from `info -json`.
+type elevationDocument = report.Hardware
 
 // elevateMsg carries the result of an elevated detection run.
 type elevateMsg struct {

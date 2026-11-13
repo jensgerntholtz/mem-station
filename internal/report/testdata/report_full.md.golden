@@ -1,0 +1,52 @@
+# MemStation report
+
+_Generated 2026-11-13 20:04 UTC · version 0.2.0-test_
+
+## Hardware
+
+Detected 4 params from hardware.
+
+| Setting | Value |
+| --- | --- |
+| Channels | 2 |
+| DRAM Freq | 3200 |
+| DRAM Voltage | 1.35V |
+| Extra Field | kept |
+
+### SPD
+
+| Field | Value |
+| --- | --- |
+| Part number | F4-3200C16-16GVK |
+| Speed | 3200 MT/s |
+| Size | 16384 MB |
+| Ranks | 2 |
+| Timings | 16-18-18-38 |
+| JEDEC profile | DDR4-3200 16-18-18-38 |
+
+### IMC registers
+
+| Channel | Timings |
+| --- | --- |
+| channel 0 | tRAS 38 · tRP 18 · tRCD 18 · tRFC 350 · tREFI 7800 |
+
+## Applied profile
+
+Source: **applied** · updated 2026-11-13 19:04 UTC
+
+| Key | Value |
+| --- | --- |
+| freq | 3200 |
+| tCL | 16 |
+| tRCD | 18 |
+
+## Recent runs
+
+| When (UTC) | Kind | Duration | Exit | Note |
+| --- | --- | --- | --- | --- |
+| 2026-11-13 19:04 | benchmark | 15s | 2 | stress-ng exited with status 2 |
+| 2026-11-13 18:04 | burnin | 30m | 0 | - |
+
+---
+
+Profile only: MemStation writes profile files, never MSRs, BIOS, or hardware timings.
