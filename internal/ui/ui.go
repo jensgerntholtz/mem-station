@@ -219,8 +219,14 @@ func Footer(status string, level Level, hints []KeyHint, width int) string {
 	}
 
 	leftW := width - rightW
+	// A truncated status ends in an ellipsis; keep one column of air so it does
+	// not run straight into the first key hint.
+	truncW := leftW
+	if lipgloss.Width(status) > leftW {
+		truncW = max(0, leftW-1)
+	}
 	left := lipgloss.NewStyle().Foreground(statusColor).
-		Render(PadRight(Truncate(status, leftW, true), leftW))
+		Render(PadRight(Truncate(status, truncW, true), leftW))
 	return left + right
 }
 

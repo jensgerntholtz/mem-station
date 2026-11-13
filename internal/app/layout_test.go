@@ -141,7 +141,7 @@ func TestTabBarAndFooter(t *testing.T) {
 		t.Errorf("row 2 is not the tab bar: %q", lines[1])
 	}
 	footer := lines[len(lines)-1]
-	if !strings.Contains(footer, "apply") {
+	if !strings.Contains(footer, "enter edit") {
 		t.Errorf("last row is not the footer: %q", footer)
 	}
 }
