@@ -1,0 +1,21 @@
+╭────────────────────────────────────────────────────────────────────────────╮
+│ Burn-in                                                                    │
+│ Preset [ memory-heavy (embedded) ]  Duration [30m]  Stop on error [on]     │
+│     Running      1m / 30m  [#----------------]  | running                  │
+│ !! 1 error line(s) · first: stress-ng: error: [42] vm: failed to allocate  │
+│ job: /var/lib/mem-station/jobs/burnin-memory.job                           │
+│ log: /var/lib/mem-station/logs/burnin.log                                  │
+│                                                                            │
+│ Live log (follow: on, filter: all)                                         │
+│ stress-ng: info: dispatching stressors                                     │
+│ stress-ng: info: vm: setting up                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+╰────────────────────────────────────────────────────────────────────────────╯

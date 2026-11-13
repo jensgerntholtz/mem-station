@@ -3,6 +3,7 @@ package benchmark
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"mem-station/internal/runner"
 	"mem-station/internal/style"
@@ -11,35 +12,72 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// resultColumnWidths are the aligned column widths of the result table.
+var resultColumnWidths = []int{12, 9, 9, 8, 9, 6}
+
+// historyColumnWidths are the aligned column widths of the history table.
+var historyColumnWidths = []int{12, 8, 8, 6, 22}
+
+// maxResultMetrics bounds the metric rows so the log keeps room at 80x24.
+const maxResultMetrics = 4
+
+// maxHistoryRows bounds the history rows shown above the log.
+const maxHistoryRows = 4
+
 // View renders the tab into exactly w x h cells.
 func (m *Model) View(w, h int) string {
 	contentH := h - 3 // border 2 + title 1
 	if contentH < 1 {
 		contentH = 1
 	}
-	controls := m.controls(w)
-	results := m.resultLines()
 
-	used := len(strings.Split(controls, "\n"))
+	controls := m.controls(w)
+	results := m.resultLines(w)
+	history := m.historyLines(w)
+
+	// The fixed block is the controls plus the blank line and the live-log
+	// title above the viewport. History only appears when the remaining space
+	// can hold it above a readable log.
+	fixed := len(controls) + 2
 	if len(results) > 0 {
-		used += 1 + len(results)
+		fixed += 1 + len(results)
 	}
-	vpH := contentH - used - 1 // one blank line before the log
-	if vpH < 2 {
-		vpH = 2
+	vpH := contentH - fixed
+	histUsed := 0
+	if len(history) > 0 && vpH-len(history)-1 >= 3 {
+		histUsed = len(history) + 1
+		vpH -= histUsed
+	}
+	if vpH < 3 {
+		vpH = 3
 	}
 	m.resizeViewport(w-4, vpH)
 
-	parts := []string{controls}
+	parts := []string{strings.Join(controls, "\n")}
 	if len(results) > 0 {
 		parts = append(parts, "", strings.Join(results, "\n"))
 	}
-	parts = append(parts, "", m.vp.View())
+	parts = append(parts, "", m.logView())
+	if histUsed > 0 {
+		parts = append(parts, "", strings.Join(history, "\n"))
+	}
 	return ui.Panel("Benchmark", w, h, false, strings.Join(parts, "\n"))
 }
 
-func (m *Model) controls(w int) string {
+// logView renders the live output viewport with its follow marker.
+func (m *Model) logView() string {
 	th := style.ActiveTheme()
+	follow := "follow: off"
+	if m.follow {
+		follow = "follow: on"
+	}
+	title := lipgloss.NewStyle().Foreground(th.Muted).Render("Live log (" + follow + ")")
+	return title + "\n" + m.vp.View()
+}
+
+func (m *Model) controls(w int) []string {
+	lines := []string{m.configLine()}
+
 	var button string
 	switch {
 	case m.Running():
@@ -51,31 +89,52 @@ func (m *Model) controls(w int) string {
 	}
 
 	elapsed := ui.DurationLabel(m.elapsed())
-	total := ui.DurationLabel(m.duration)
-	bar := ui.Progress(m.progress(), min(28, max(12, w/4)))
-	statusLine := lipgloss.JoinHorizontal(lipgloss.Top,
-		button,
-		"  ",
-		lipgloss.NewStyle().Foreground(th.Muted).Render(elapsed+" / "+total),
-		"  ",
-		lipgloss.NewStyle().Foreground(th.Accent).Render(bar),
-		"  ",
-		m.stateLabel(),
-	)
-
-	config := style.Hint.Render(fmt.Sprintf(
-		"memrate 1 · 256M buffer · duration %s · workers 1", total))
-	if s := m.snapshot; s.Values != nil {
-		if peak := s.PeakMBs(); peak > 0 {
-			config += style.Hint.Render(fmt.Sprintf("  ·  theoretical peak %.0f MB/s", peak))
-		}
+	total := ui.DurationLabel(m.options().Duration)
+	if m.runOptions.Duration > 0 {
+		total = ui.DurationLabel(m.runOptions.Duration)
 	}
-
-	lines := []string{statusLine, config}
+	bar := ui.Progress(m.progress(), min(28, max(10, w/4)))
+	state := m.stateLabel()
+	if m.Running() {
+		state = ui.SpinnerFrame(m.now()) + " " + state
+	}
+	lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Top,
+		button, "  ",
+		style.Hint.Render(elapsed+" / "+total), "  ",
+		lipgloss.NewStyle().Foreground(style.ActiveTheme().Accent).Render(bar), "  ",
+		state,
+	))
 	if m.logPath != "" {
 		lines = append(lines, style.Hint.Render("log: "+m.logPath))
 	}
-	return strings.Join(lines, "\n")
+	if m.historyErr != "" {
+		lines = append(lines, lipgloss.NewStyle().Foreground(style.ActiveTheme().Warning).Render(m.historyErr))
+	}
+	return lines
+}
+
+// configLine renders the editable duration/buffer/workers row.
+func (m *Model) configLine() string {
+	th := style.ActiveTheme()
+	field := func(label, value string, selected bool) string {
+		l := style.Hint.Render(label + " ")
+		if selected {
+			return l + lipgloss.NewStyle().Bold(true).Foreground(th.Accent).Render("[ "+value+" ]")
+		}
+		return l + lipgloss.NewStyle().Foreground(th.Value).Render("["+value+"]")
+	}
+
+	durationValue := durationLabel(m.durationIndex, m.custom)
+	if m.editing {
+		durationValue = m.input.View()
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		field("Duration", durationValue, m.row == rowDuration),
+		"  ",
+		field("Buffer", buffers[m.bufferIndex], m.row == rowBuffer),
+		"  ",
+		field("Workers", fmt.Sprint(m.workers), m.row == rowWorkers),
+	)
 }
 
 func (m *Model) stateLabel() string {
@@ -94,54 +153,121 @@ func (m *Model) stateLabel() string {
 	}
 }
 
-// resultLines renders the parsed result table, or nil when there is no result.
-func (m *Model) resultLines() []string {
-	if m.results == nil {
-		if m.state == runner.StateFailed && m.errText != "" {
-			return []string{lipgloss.NewStyle().Foreground(style.ActiveTheme().Danger).Render("error: " + m.errText)}
-		}
+// resultLines renders the parsed result table (last vs previous run) or the
+// failure reason. It returns nil when there is nothing to show.
+func (m *Model) resultLines(w int) []string {
+	th := style.ActiveTheme()
+	if m.startedAt.IsZero() || m.Running() {
 		return nil
 	}
-	r := m.results
-	peak := m.peakMBs()
-
-	header := style.ResultLabel.Render("Metric") +
-		style.ResultValue.Render("Measured") +
-		style.ResultTheo.Render("Peak") +
-		style.ColHeader.Width(12).Render("Efficiency")
-
-	lines := []string{
-		style.SectionTitle.Render("Summary"),
-		header,
-		resultRow("Read (avg)", r.ReadRate, peak),
-		resultRow("Write (avg)", r.WriteRate, peak),
-	}
-	if len(r.Metrics) > 0 {
-		lines = append(lines, style.SectionTitle.Render("Rates (MB/s)"))
-		for _, mt := range r.Metrics {
-			lines = append(lines, resultRow(mt.Label, mt.Value, peak))
+	if m.results == nil || !payloadOf(m.runOptions, m.results).Parsed {
+		msg := m.errText
+		if msg == "" {
+			msg = m.parseMsg
 		}
+		if msg == "" {
+			return nil
+		}
+		st := lipgloss.NewStyle().Foreground(th.Danger)
+		if m.state == runner.StateCancelled {
+			st = lipgloss.NewStyle().Foreground(th.Warning)
+		}
+		return []string{st.Render("error: " + ui.Truncate(msg, max(8, w-8), true))}
 	}
-	return lines
+
+	opts := m.runOptions
+	prev, hasPrev := m.previous(opts.Signature(), m.lastID)
+	peak := m.snapshot.PeakMBs()
+
+	header := style.ColHeader.Render
+	rows := [][]string{{
+		header("Metric"), header("Last"), header("Prev"), header("Delta"), header("Peak"), header("Eff"),
+	}}
+	rows = append(rows, resultRow("Read (avg)", m.results.ReadRate, prev.ReadMBs, hasPrev, peak))
+	rows = append(rows, resultRow("Write (avg)", m.results.WriteRate, prev.WriteMBs, hasPrev, peak))
+	for i, mt := range m.results.Metrics {
+		if i >= maxResultMetrics {
+			break
+		}
+		var prevVal float64
+		for _, pm := range prev.Metrics {
+			if pm.Label == mt.Label {
+				prevVal = pm.MBs
+				break
+			}
+		}
+		rows = append(rows, resultRow(mt.Label, mt.Value, prevVal, hasPrev, peak))
+	}
+
+	out := []string{style.SectionTitle.Render("Results · " + opts.Label())}
+	out = append(out, strings.Split(ui.JoinColumns(rows, resultColumnWidths), "\n")...)
+	return out
 }
 
-func resultRow(label string, measured, peak float64) string {
-	eff := 0.0
+// resultRow renders one measured metric against the previous run and the
+// theoretical peak.
+func resultRow(label string, last, prev float64, hasPrev bool, peak float64) []string {
+	th := style.ActiveTheme()
+	muted := lipgloss.NewStyle().Foreground(th.Muted).Render
+	prevStr := "-"
+	deltaStr := "-"
+	if hasPrev && prev > 0 {
+		prevStr = fmt.Sprintf("%.0f", prev)
+		delta := (last - prev) / prev * 100
+		st := lipgloss.NewStyle().Foreground(th.Success)
+		if delta < 0 {
+			st = lipgloss.NewStyle().Foreground(th.Danger)
+		}
+		deltaStr = st.Render(fmt.Sprintf("%+.1f%%", delta))
+	}
+	eff := "-"
 	if peak > 0 {
-		eff = measured / peak * 100
+		eff = fmt.Sprintf("%.1f%%", last/peak*100)
 	}
-	effStr := fmt.Sprintf("%.1f%%", eff)
-	styleEff := style.EffLow
-	switch {
-	case eff >= 70:
-		styleEff = style.EffGood
-	case eff >= 40:
-		styleEff = style.EffOk
+	return []string{
+		lipgloss.NewStyle().Foreground(th.Label).Render(label),
+		lipgloss.NewStyle().Foreground(th.Value).Render(fmt.Sprintf("%.0f", last)),
+		muted(prevStr),
+		deltaStr,
+		muted(fmt.Sprintf("%.0f", peak)),
+		muted(eff),
 	}
-	return style.ResultLabel.Render(label) +
-		style.ResultValue.Render(fmt.Sprintf("%.0f", measured)) +
-		style.ResultTheo.Render(fmt.Sprintf("%.0f", peak)) +
-		styleEff.Width(12).Render(effStr)
 }
 
-func (m *Model) peakMBs() float64 { return m.snapshot.PeakMBs() }
+// historyLines renders the recent-run table, newest first.
+func (m *Model) historyLines(w int) []string {
+	if len(m.runs) == 0 {
+		return nil
+	}
+	th := style.ActiveTheme()
+	rows := [][]string{{
+		style.ColHeader.Render("When"),
+		style.ColHeader.Render("Read"),
+		style.ColHeader.Render("Write"),
+		style.ColHeader.Render("Dur"),
+		style.ColHeader.Render("Config"),
+	}}
+	shown := 0
+	for _, rec := range m.runs {
+		if shown >= maxHistoryRows {
+			break
+		}
+		shown++
+		read, write := "-", "-"
+		if rec.Result.Parsed {
+			read = fmt.Sprintf("%.0f", rec.Result.ReadMBs)
+			write = fmt.Sprintf("%.0f", rec.Result.WriteMBs)
+		}
+		dur := ui.DurationLabel(time.Duration(rec.Record.DurationMS) * time.Millisecond)
+		rows = append(rows, []string{
+			lipgloss.NewStyle().Foreground(th.Muted).Render(rec.Record.StartedAt.Local().Format("01-02 15:04")),
+			lipgloss.NewStyle().Foreground(th.Value).Render(read),
+			lipgloss.NewStyle().Foreground(th.Value).Render(write),
+			lipgloss.NewStyle().Foreground(th.Muted).Render(dur),
+			lipgloss.NewStyle().Foreground(th.Label).Render(rec.Result.optionsFor().Label()),
+		})
+	}
+	out := []string{style.SectionTitle.Render(fmt.Sprintf("History (last %d, newest first)", len(m.runs)))}
+	out = append(out, strings.Split(ui.JoinColumns(rows, historyColumnWidths), "\n")...)
+	return out
+}

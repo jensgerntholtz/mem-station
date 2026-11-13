@@ -11,7 +11,6 @@ import (
 
 	"mem-station/internal/style"
 
-	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -335,9 +334,14 @@ func AppendLine(existing, line string, max int) string {
 	return strings.Join(lines, "\n")
 }
 
-// NewSpinner returns a configured bubbles spinner for run states.
-func NewSpinner() spinner.Model {
-	return spinner.New(spinner.WithSpinner(spinner.MiniDot))
+// spinnerFrames are the run-state spinner glyphs, indexed by elapsed time so a
+// tab never needs its own ticker beyond the app's 500 ms elapsed tick.
+var spinnerFrames = []string{"|", "/", "-", "\\"}
+
+// SpinnerFrame returns the spinner glyph for the given instant.
+func SpinnerFrame(t time.Time) string {
+	ms := t.UnixMilli()
+	return spinnerFrames[ms/200%int64(len(spinnerFrames))]
 }
 
 func clipBlock(s string, w, h int) string {

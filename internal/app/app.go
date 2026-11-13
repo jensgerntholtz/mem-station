@@ -161,6 +161,7 @@ func (m *Model) HelpSections() []ui.HelpSection {
 			{Key: "?", Action: "toggle help"},
 			{Key: "esc", Action: "close help"},
 			{Key: "R", Action: "retry detection"},
+			{Key: "ctrl+c", Action: "cancel a running job, else quit"},
 			{Key: "q", Action: "quit"},
 		},
 	}

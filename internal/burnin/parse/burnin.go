@@ -44,13 +44,19 @@ func ParseBurnInOutput(output string, exitCode int, err error) *Results {
 // be counted as a failure ("0 errors", "no errors detected").
 var noErrorRe = regexp.MustCompile(`(?i)\b(0|no|zero)\b[^\n]{0,12}\berrors?\b`)
 
+// IsErrorLine reports whether one output line looks like an error report. The
+// live error counter and the errors-only log filter share it with the parser.
+func IsErrorLine(line string) bool {
+	if noErrorRe.MatchString(line) {
+		return false
+	}
+	return errorLineRe.MatchString(line)
+}
+
 func countErrorLines(output string) int {
 	count := 0
 	for _, line := range strings.Split(output, "\n") {
-		if noErrorRe.MatchString(line) {
-			continue
-		}
-		if errorLineRe.MatchString(line) {
+		if IsErrorLine(line) {
 			count++
 		}
 	}

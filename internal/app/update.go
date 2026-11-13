@@ -87,8 +87,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // handleKey implements global key ownership, then forwards to the active tab.
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
-	// ctrl+c always quits, even while editing.
+	// ctrl+c cancels a running job and stays in the app; with nothing running
+	// it quits.
 	if msg.String() == "ctrl+c" {
+		if m.anyRunning() {
+			for _, t := range m.tabs {
+				t.Stop()
+			}
+			m.resetStatus()
+			return m.setStatus("Cancelling the running job...", ui.LevelWarn)
+		}
 		return m.quit()
 	}
 
@@ -178,8 +186,12 @@ func (m *Model) quit() tea.Cmd {
 }
 
 // routeJobEvent delivers a runner event to the owning tab, then keeps the
-// elapsed ticker alive while any job runs.
+// elapsed ticker alive while any job runs. A new run supersedes an error banner
+// left over from an earlier run.
 func (m *Model) routeJobEvent(msg msgs.JobEvent) tea.Cmd {
+	if msg.Ev.Type == runner.EventStarted {
+		m.resetStatus()
+	}
 	cmds := make([]tea.Cmd, 0, 3)
 	for _, t := range m.tabs {
 		if !t.Wants(msg.Ev.Kind) {
@@ -204,9 +216,13 @@ func (m *Model) ensureTick() tea.Cmd {
 	return msgs.TickEvery(tickInterval)
 }
 
-// setStatus publishes a status line and schedules its auto-clear. Errors stay
-// on screen until replaced.
+// setStatus publishes a status line and schedules its auto-clear. Error banners
+// stay until another error, a new run, or an explicit cancel replaces them, so
+// background info messages never hide a failure.
 func (m *Model) setStatus(text string, level ui.Level) tea.Cmd {
+	if m.level == ui.LevelError && level != ui.LevelError {
+		return nil
+	}
 	m.status = text
 	m.level = level
 	m.statusSeq++
@@ -217,13 +233,23 @@ func (m *Model) setStatus(text string, level ui.Level) tea.Cmd {
 	return tea.Tick(clearStatusAfter, func(time.Time) tea.Msg { return clearStatusMsg{seq: seq} })
 }
 
+// resetStatus drops an active error banner, restoring the context hint.
+func (m *Model) resetStatus() {
+	if m.level != ui.LevelError {
+		return
+	}
+	m.level = ui.LevelInfo
+	m.status = m.defaultStatus()
+	m.statusSeq++
+}
+
 func (m *Model) defaultStatus() string {
 	switch m.active {
 	case 0:
 		return "Timings · enter edit · ctrl+s apply · ctrl+r reset · [/] views · ? help"
 	case 1:
-		return "Benchmark · enter run · x cancel · pgup/pgdown scroll"
+		return "Benchmark · enter run · ↑/↓ rows · ←/→ values · f follow · e export"
 	default:
-		return "Burn-in · enter run · x cancel · job: --job, MEM_STATION_JOB, ./burnin-memory.job"
+		return "Burn-in · enter run · ↑/↓ rows · ←/→ values · e filter · f follow · s save"
 	}
 }

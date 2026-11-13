@@ -4,9 +4,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"mem-station/internal/config"
 	"mem-station/internal/memory"
+	"mem-station/internal/msgs"
+	"mem-station/internal/runner"
 	"mem-station/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -305,5 +308,105 @@ func TestQuitGating(t *testing.T) {
 	}
 	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); !isQuit(cmd) {
 		t.Error("q with no overlay should quit")
+	}
+}
+
+// jobEvent builds the message the app routes for one runner event.
+func jobEvent(kind runner.Kind, typ runner.EventType) msgs.JobEvent {
+	return msgs.JobEvent{Ev: runner.Event{
+		Kind:    kind,
+		Type:    typ,
+		At:      time.Date(2024, 5, 1, 12, 0, 0, 0, time.UTC),
+		LogPath: "/var/lib/mem-station/logs/run.log",
+	}}
+}
+
+// TestJobEventsRouteToInactiveTab guards the Phase 3 requirement that a run
+// keeps reporting while the user is on another tab.
+func TestJobEventsRouteToInactiveTab(t *testing.T) {
+	m := testModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.switchTab(0)
+
+	m.Update(jobEvent(runner.KindBurnIn, runner.EventStarted))
+	if !m.burn.Running() {
+		t.Fatal("burn-in events did not reach the inactive tab")
+	}
+	if m.active != 0 {
+		t.Errorf("active tab changed to %d", m.active)
+	}
+	if out := m.View(); !strings.Contains(out, "burn-in running") {
+		t.Errorf("header does not mark the running tab:\n%s", out)
+	}
+
+	// Switching to the tab shows the live run instead of a fresh idle state.
+	m.switchTab(2)
+	if out := m.View(); !strings.Contains(out, "running") {
+		t.Errorf("burn-in tab lost the running state:\n%s", out)
+	}
+}
+
+// TestCtrlCCancelsRunningJob checks ctrl+c cancels instead of quitting while a
+// job is active, and quits when nothing runs.
+func TestCtrlCCancelsRunningJob(t *testing.T) {
+	m := testModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m.Update(jobEvent(runner.KindBenchmark, runner.EventStarted))
+
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC}); isQuit(cmd) {
+		t.Error("ctrl+c quit the app while a job was running")
+	}
+	if !strings.Contains(m.status, "Cancelling") {
+		t.Errorf("status = %q, want a cancellation notice", m.status)
+	}
+
+	idle := testModel(t)
+	idle.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if _, cmd := idle.Update(tea.KeyMsg{Type: tea.KeyCtrlC}); !isQuit(cmd) {
+		t.Error("ctrl+c did not quit with no job running")
+	}
+}
+
+// TestErrorStatusIsSticky checks an error banner is not overwritten by a
+// background info message and clears when a new run starts.
+func TestErrorStatusIsSticky(t *testing.T) {
+	m := testModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if cmd := m.setStatus("Burn-in FAILED: 2 error lines", ui.LevelError); cmd != nil {
+		t.Error("an error status scheduled an auto-clear")
+	}
+
+	m.setStatus("Benchmark complete: all good", ui.LevelInfo)
+	if m.level != ui.LevelError || !strings.Contains(m.status, "FAILED") {
+		t.Errorf("error banner was overwritten: level=%v status=%q", m.level, m.status)
+	}
+
+	m.Update(jobEvent(runner.KindBenchmark, runner.EventStarted))
+	if m.level == ui.LevelError {
+		t.Errorf("a new run did not clear the error banner: %q", m.status)
+	}
+	if out := m.View(); !strings.Contains(out, "Benchmark") {
+		t.Errorf("view broke after the status reset:\n%s", out)
+	}
+}
+
+// TestRunTabsAreExactSizeWhileRunning checks the exact-size contract holds for
+// both run tabs while a job is active.
+func TestRunTabsAreExactSizeWhileRunning(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{80, 24}, {120, 40}} {
+		m := testModel(t)
+		m.Update(tea.WindowSizeMsg{Width: size.w, Height: size.h})
+		m.Update(jobEvent(runner.KindBenchmark, runner.EventStarted))
+		m.Update(jobEvent(runner.KindBurnIn, runner.EventStarted))
+		for _, tab := range []int{1, 2} {
+			m.switchTab(tab)
+			out := m.View()
+			if got := lipgloss.Height(out); got != size.h {
+				t.Errorf("%dx%d tab %d: height = %d, want %d", size.w, size.h, tab, got, size.h)
+			}
+			if got := lipgloss.Width(out); got != size.w {
+				t.Errorf("%dx%d tab %d: width = %d, want %d", size.w, size.h, tab, got, size.w)
+			}
+		}
 	}
 }

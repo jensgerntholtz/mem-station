@@ -1,9 +1,10 @@
 // Package benchmark implements the Benchmark tab: it configures and runs the
-// stress-ng memrate benchmark through internal/runner and renders the parsed
-// results.
+// stress-ng memrate benchmark through internal/runner, parses the output, and
+// keeps the recent run history in internal/store.
 package benchmark
 
 import (
+	"context"
 	"time"
 
 	"mem-station/internal/bench"
@@ -11,29 +12,70 @@ import (
 	"mem-station/internal/runner"
 	"mem-station/internal/ui"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// defaultDuration is the Phase 1 benchmark duration. Phase 3 makes it
-// configurable from the tab.
-const defaultDuration = 30 * time.Second
+// configRow identifies one row of the run configuration.
+type configRow int
+
+const (
+	rowDuration configRow = iota
+	rowBuffer
+	rowWorkers
+	rowCount
+)
+
+// durationIndexDefault selects the 30s option.
+const durationIndexDefault = 1
+
+// historyLimit is how many recent runs the tab loads and keeps.
+const historyLimit = 10
+
+// defaultStart launches the real stress-ng process; tests replace it through
+// Model.start.
+func defaultStart(ctx context.Context, spec runner.Spec) runner.Handle {
+	return runner.Start(ctx, spec)
+}
 
 // Model is the Benchmark tab.
 type Model struct {
 	state    runner.State
-	job      *runner.Job
+	start    runner.StartFunc
+	job      runner.Handle
 	events   <-chan runner.Event
-	duration time.Duration
 	snapshot config.Snapshot
+	// now is the clock used for elapsed time; tests pin it.
+	now func() time.Time
 
-	output     string
-	results    *bench.BenchResults
-	logPath    string
-	exitCode   int
-	errText    string
+	durationIndex int
+	custom        time.Duration
+	bufferIndex   int
+	workers       int
+	row           configRow
+
+	editing  bool
+	input    textinput.Model
+	editPrev int
+
+	output   string
+	follow   bool
+	results  *bench.BenchResults
+	parseMsg string
+	logPath  string
+	exitCode int
+	errText  string
+
 	startedAt  time.Time
 	finishedAt time.Time
+	// runOptions is the configuration the active/last run used, so a finished
+	// record is never attributed to settings the user changed mid-run.
+	runOptions Options
+
+	runs       []runRecord
+	historyErr string
+	lastID     string
 
 	vp   viewport.Model
 	keys KeyMap
@@ -41,23 +83,38 @@ type Model struct {
 
 // New builds an idle benchmark tab.
 func New(snapshot config.Snapshot) *Model {
+	in := textinput.New()
+	in.Prompt = ""
+	in.CharLimit = 8
+	in.Width = 8
+
 	return &Model{
-		state:    runner.StateIdle,
-		duration: defaultDuration,
-		snapshot: snapshot,
-		vp:       viewport.New(60, 8),
-		keys:     DefaultKeyMap(),
+		state:         runner.StateIdle,
+		start:         defaultStart,
+		snapshot:      snapshot,
+		now:           time.Now,
+		durationIndex: durationIndexDefault,
+		custom:        2 * time.Minute,
+		bufferIndex:   defaultBufferIndex,
+		workers:       1,
+		input:         in,
+		follow:        true,
+		vp:            viewport.New(60, 8),
+		keys:          DefaultKeyMap(),
 	}
 }
 
-// Init implements the tab lifecycle; runs are user initiated.
-func (m *Model) Init() tea.Cmd { return nil }
+// Init loads the recent run history; runs are user initiated.
+func (m *Model) Init() tea.Cmd {
+	m.loadHistory()
+	return nil
+}
 
 // SetSnapshot updates the applied configuration the next run is attributed to.
 func (m *Model) SetSnapshot(s config.Snapshot) { m.snapshot = s }
 
-// Editing reports whether a text input owns letter keys (never here).
-func (m *Model) Editing() bool { return false }
+// Editing reports whether the custom duration input owns letter keys.
+func (m *Model) Editing() bool { return m.editing }
 
 // ModalOpen reports whether a modal is open (never here).
 func (m *Model) ModalOpen() bool { return false }
@@ -68,8 +125,12 @@ func (m *Model) Running() bool { return m.state == runner.StateRunning }
 // Dirty reports whether unattributed changes exist (never here).
 func (m *Model) Dirty() bool { return false }
 
-// Blur ends any in-progress edit (run tabs have no editors).
-func (m *Model) Blur() {}
+// Blur ends any in-progress edit (run tabs have no persistent editors).
+func (m *Model) Blur() {
+	if m.editing {
+		m.cancelEdit()
+	}
+}
 
 // Stop cancels a running job, if any.
 func (m *Model) Stop() {
@@ -89,8 +150,21 @@ func (m *Model) Wants(kind runner.Kind) bool { return kind == runner.KindBenchma
 
 // Keys returns the footer hints for the current state.
 func (m *Model) Keys() []ui.KeyHint {
-	if m.Running() {
-		return hints(m.keys.Cancel, m.keys.ScrollUp, m.keys.ScrollDn)
+	switch {
+	case m.editing:
+		return []ui.KeyHint{{Key: "enter", Action: "commit duration"}, {Key: "esc", Action: "cancel edit"}}
+	case m.Running():
+		return hints(m.keys.Cancel, m.keys.Follow, m.keys.ScrollUp, m.keys.ScrollDn)
+	default:
+		return hints(m.keys.Run, m.keys.Up, m.keys.Prev, m.keys.Export, m.keys.Follow)
 	}
-	return hints(m.keys.Run, m.keys.ScrollUp, m.keys.ScrollDn)
+}
+
+// options returns the configuration the next run would use.
+func (m *Model) options() Options {
+	return Options{
+		Duration: durationFor(m.durationIndex, m.custom),
+		Buffer:   buffers[m.bufferIndex],
+		Workers:  m.workers,
+	}
 }

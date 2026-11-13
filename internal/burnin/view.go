@@ -3,6 +3,7 @@ package burnin
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"mem-station/internal/runner"
 	"mem-station/internal/style"
@@ -11,35 +12,71 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// historyColumnWidths are the aligned column widths of the history table.
+var historyColumnWidths = []int{12, 9, 5, 6, 24}
+
+// maxHistoryRows bounds the history rows shown above the log.
+const maxHistoryRows = 4
+
 // View renders the tab into exactly w x h cells.
 func (m *Model) View(w, h int) string {
 	contentH := h - 3 // border 2 + title 1
 	if contentH < 1 {
 		contentH = 1
 	}
-	controls := m.controls(w)
-	results := m.resultLines()
 
-	used := len(strings.Split(controls, "\n"))
+	controls := m.controls(w)
+	results := m.resultLines(w)
+	history := m.historyLines()
+
+	// The fixed block is the controls plus the blank line and the live-log
+	// title above the viewport. History only appears when the remaining space
+	// can hold it above a readable log.
+	fixed := len(controls) + 2
 	if len(results) > 0 {
-		used += 1 + len(results)
+		fixed += 1 + len(results)
 	}
-	vpH := contentH - used - 1
-	if vpH < 2 {
-		vpH = 2
+	vpH := contentH - fixed
+	histUsed := 0
+	if len(history) > 0 && vpH-len(history)-1 >= 3 {
+		histUsed = len(history) + 1
+		vpH -= histUsed
+	}
+	if vpH < 3 {
+		vpH = 3
 	}
 	m.resizeViewport(w-4, vpH)
 
-	parts := []string{controls}
+	parts := []string{strings.Join(controls, "\n")}
 	if len(results) > 0 {
 		parts = append(parts, "", strings.Join(results, "\n"))
 	}
-	parts = append(parts, "", m.vp.View())
+	parts = append(parts, "", m.logView())
+	if histUsed > 0 {
+		parts = append(parts, "", strings.Join(history, "\n"))
+	}
 	return ui.Panel("Burn-in", w, h, false, strings.Join(parts, "\n"))
 }
 
-func (m *Model) controls(w int) string {
+// logView renders the live output viewport with its follow/filter markers.
+func (m *Model) logView() string {
 	th := style.ActiveTheme()
+	filter := "filter: all"
+	if m.errorsOnly {
+		filter = "filter: errors"
+	}
+	follow := "follow: off"
+	if m.follow {
+		follow = "follow: on"
+	}
+	title := lipgloss.NewStyle().Foreground(th.Muted).Render("Live log (" + follow + ", " + filter + ")")
+	return title + "\n" + m.vp.View()
+}
+
+func (m *Model) controls(w int) []string {
+	th := style.ActiveTheme()
+	lines := []string{m.configLine()}
+
 	var button string
 	switch {
 	case m.Running():
@@ -51,27 +88,72 @@ func (m *Model) controls(w int) string {
 	}
 
 	elapsed := ui.DurationLabel(m.elapsed())
-	total := ui.DurationLabel(m.duration)
-	bar := ui.Progress(m.progress(), min(28, max(12, w/4)))
-	line := lipgloss.JoinHorizontal(lipgloss.Top,
-		button, "  ",
-		lipgloss.NewStyle().Foreground(th.Muted).Render(elapsed+" / "+total), "  ",
-		lipgloss.NewStyle().Foreground(th.Accent).Render(bar), "  ",
-		m.stateLabel(),
-	)
-
-	lines := []string{line}
-	if m.presetSource != "" || m.jobPath != "" {
-		src := m.presetSource
-		if src == "" {
-			src = m.jobPath
-		}
-		lines = append(lines, style.Hint.Render("preset: "+src))
+	total := ui.DurationLabel(m.options().Duration)
+	if m.runOptions.Duration > 0 {
+		total = ui.DurationLabel(m.runOptions.Duration)
 	}
-	if m.logPath != "" {
+	bar := ui.Progress(m.progress(), min(28, max(10, w/4)))
+	state := m.stateLabel()
+	if m.Running() {
+		state = ui.SpinnerFrame(m.now()) + " " + state
+	}
+	lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Top,
+		button, "  ",
+		style.Hint.Render(elapsed+" / "+total), "  ",
+		lipgloss.NewStyle().Foreground(th.Accent).Render(bar), "  ",
+		state,
+	))
+
+	if m.errors > 0 {
+		lines = append(lines, m.errorBanner())
+	}
+	if m.jobPath != "" && m.Running() {
+		lines = append(lines, style.Hint.Render("job: "+m.jobPath))
+	}
+	if m.logPath != "" && m.Running() {
 		lines = append(lines, style.Hint.Render("log: "+m.logPath))
 	}
-	return strings.Join(lines, "\n")
+	if m.presetWarn != "" {
+		lines = append(lines, lipgloss.NewStyle().Foreground(th.Warning).Render(m.presetWarn))
+	}
+	if m.historyErr != "" {
+		lines = append(lines, lipgloss.NewStyle().Foreground(th.Warning).Render(m.historyErr))
+	}
+	return lines
+}
+
+// errorBanner is the prominent error line shown as soon as errors appear.
+func (m *Model) errorBanner() string {
+	th := style.ActiveTheme()
+	text := fmt.Sprintf("!! %d error line(s)", m.errors)
+	if m.firstError != "" {
+		text += " · first: " + m.firstError
+	}
+	return lipgloss.NewStyle().Bold(true).Foreground(th.Danger).Render(text)
+}
+
+// configLine renders the editable preset/duration/stop-on-error row.
+func (m *Model) configLine() string {
+	th := style.ActiveTheme()
+	field := func(label, value string, selected bool) string {
+		l := style.Hint.Render(label + " ")
+		if selected {
+			return l + lipgloss.NewStyle().Bold(true).Foreground(th.Accent).Render("[ "+value+" ]")
+		}
+		return l + lipgloss.NewStyle().Foreground(th.Value).Render("["+value+"]")
+	}
+
+	durationValue := durationLabel(m.durationIndex, m.custom)
+	if m.editing {
+		durationValue = m.input.View()
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		field("Preset", m.preset().Name, m.row == rowPreset),
+		"  ",
+		field("Duration", durationValue, m.row == rowDuration),
+		"  ",
+		field("Stop on error", onOff(m.stopOnError), m.row == rowStopOnError),
+	)
 }
 
 func (m *Model) stateLabel() string {
@@ -90,30 +172,95 @@ func (m *Model) stateLabel() string {
 	}
 }
 
-// resultLines renders the burn-in verdict, or nil when there is no result.
-func (m *Model) resultLines() []string {
+// resultLines renders the verdict summary after a terminal state.
+func (m *Model) resultLines(w int) []string {
 	th := style.ActiveTheme()
-	r := m.results
-	if r == nil {
-		if m.state == runner.StateFailed && m.errText != "" {
-			return []string{lipgloss.NewStyle().Foreground(th.Danger).Render("error: " + m.errText)}
-		}
+	if m.startedAt.IsZero() || m.Running() || m.results == nil {
 		return nil
 	}
-
-	verdict := lipgloss.NewStyle().Bold(true).Foreground(th.Danger).Render("FAIL")
-	if r.Success {
-		verdict = lipgloss.NewStyle().Bold(true).Foreground(th.Success).Render("PASS")
+	verdict := verdictFailed
+	verdictStyle := lipgloss.NewStyle().Bold(true).Foreground(th.Danger).Render("FAIL")
+	switch m.state {
+	case runner.StateDone:
+		verdict = verdictPassed
+		verdictStyle = lipgloss.NewStyle().Bold(true).Foreground(th.Success).Render("PASS")
+	case runner.StateCancelled:
+		verdict = verdictCancelled
+		verdictStyle = lipgloss.NewStyle().Bold(true).Foreground(th.Warning).Render("CANCELLED")
 	}
 
-	label := func(s string) string { return style.ResultLabel.Render(s) }
-	value := func(s string) string { return style.ResultValue.Render(s) }
+	label := func(s string) string { return style.Hint.Render(s + " ") }
+	value := func(s string) string { return lipgloss.NewStyle().Foreground(th.Value).Render(s) }
 
-	return []string{
-		style.SectionTitle.Render("Result"),
-		label("Verdict") + value(" ") + verdict,
-		label("Duration") + value(r.Duration),
-		label("Error lines") + value(fmt.Sprint(r.Errors)),
-		label("Exit code") + value(fmt.Sprint(r.ExitCode)),
+	summary := lipgloss.JoinHorizontal(lipgloss.Top,
+		label("Verdict"), verdictStyle, "   ",
+		label("Elapsed"), value(ui.DurationLabel(m.elapsed())), "   ",
+		label("Errors"), value(fmt.Sprint(m.errors)), "   ",
+		label("Exit"), value(fmt.Sprint(m.exitCode)),
+	)
+	lines := []string{
+		style.SectionTitle.Render("Result · " + verdict),
+		ui.Truncate(summary, max(20, w-4), true),
 	}
+	if m.errText != "" && m.state != runner.StateDone {
+		st := lipgloss.NewStyle().Foreground(th.Danger)
+		if m.state == runner.StateCancelled {
+			st = lipgloss.NewStyle().Foreground(th.Warning)
+		}
+		lines = append(lines, st.Render("reason: "+m.errText))
+	}
+	if m.logPath != "" {
+		lines = append(lines, style.Hint.Render("log: "+m.logPath+"  (full run: view the log file)"))
+	}
+	return lines
+}
+
+// historyLines renders the recent-run table, newest first.
+func (m *Model) historyLines() []string {
+	if len(m.runs) == 0 {
+		return nil
+	}
+	th := style.ActiveTheme()
+	rows := [][]string{{
+		style.ColHeader.Render("When"),
+		style.ColHeader.Render("Verdict"),
+		style.ColHeader.Render("Err"),
+		style.ColHeader.Render("Dur"),
+		style.ColHeader.Render("Config"),
+	}}
+	shown := 0
+	for _, rec := range m.runs {
+		if shown >= maxHistoryRows {
+			break
+		}
+		shown++
+		verdict := rec.Result.Verdict
+		if verdict == "" {
+			verdict = "-"
+		}
+		st := lipgloss.NewStyle().Foreground(th.Muted)
+		switch verdict {
+		case verdictPassed:
+			st = lipgloss.NewStyle().Foreground(th.Success)
+		case verdictFailed:
+			st = lipgloss.NewStyle().Foreground(th.Danger)
+		case verdictCancelled:
+			st = lipgloss.NewStyle().Foreground(th.Warning)
+		}
+		opts := rec.Result.Options.options()
+		config := ui.DurationLabel(opts.Duration)
+		if name := rec.Result.Options.PresetName; name != "" {
+			config += " · " + name
+		}
+		rows = append(rows, []string{
+			lipgloss.NewStyle().Foreground(th.Muted).Render(rec.Record.StartedAt.Local().Format("01-02 15:04")),
+			st.Render(verdict),
+			lipgloss.NewStyle().Foreground(th.Value).Render(fmt.Sprint(rec.Result.Errors)),
+			lipgloss.NewStyle().Foreground(th.Muted).Render(ui.DurationLabel(time.Duration(rec.Record.DurationMS) * time.Millisecond)),
+			lipgloss.NewStyle().Foreground(th.Label).Render(config),
+		})
+	}
+	out := []string{style.SectionTitle.Render(fmt.Sprintf("History (last %d, newest first)", len(m.runs)))}
+	out = append(out, strings.Split(ui.JoinColumns(rows, historyColumnWidths), "\n")...)
+	return out
 }

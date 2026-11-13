@@ -206,6 +206,28 @@ func RecentHistory(kind runner.Kind, n int) ([]Record, error) {
 	return out, nil
 }
 
+// ExportJSON writes v as indented JSON to <state>/exports/<name>.json and
+// returns the absolute path. Writes are atomic so an export never leaves a
+// partial file behind.
+func ExportJSON(name string, v any) (string, error) {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "exports", sanitizeName(name)+".json")
+	if err := writeFileAtomic(path, append(data, '\n'), 0600); err != nil {
+		return "", err
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs, nil
+	}
+	return path, nil
+}
+
 // MaterializeJob writes a copy of preset into the state dir with its timeout
 // line replaced by the given duration (appended if absent). The repo job file
 // is never modified. It returns the absolute path to the materialized job.
@@ -263,6 +285,15 @@ func loadProfile(path string) (config.Profile, bool, error) {
 }
 
 func profileFileName(name string) string {
+	s := sanitizeName(name)
+	if s == "" {
+		s = "profile"
+	}
+	return s + ".json"
+}
+
+// sanitizeName reduces a display name to a safe file stem.
+func sanitizeName(name string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
 		switch {
@@ -272,11 +303,7 @@ func profileFileName(name string) string {
 			b.WriteRune('-')
 		}
 	}
-	s := strings.Trim(b.String(), "-")
-	if s == "" {
-		s = "profile"
-	}
-	return s + ".json"
+	return strings.Trim(b.String(), "-")
 }
 
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {

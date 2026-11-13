@@ -1,0 +1,37 @@
+╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Benchmark                                                                                                          │
+│ Duration [ 30s ]  Buffer [256M]  Workers [1]                                                                       │
+│     Enter - Run Again      30s / 30s  [##########################]  done                                           │
+│ log: /var/lib/mem-station/logs/benchmark.log                                                                       │
+│                                                                                                                    │
+│ Results · 30s · 256M · 1 worker                                                                                    │
+│ Metric        Last       Prev       Delta     Peak       Eff                                                       │
+│ Read (avg)    21400      -          -         51200      41.8%                                                     │
+│ Write (avg)   18100      -          -         51200      35.4%                                                     │
+│ read64        20000      -          -         51200      39.1%                                                     │
+│ write64       17000      -          -         51200      33.2%                                                     │
+│                                                                                                                    │
+│ Live log (follow: on)                                                                                              │
+│ stress-ng: info: dispatching memrate workers                                                                       │
+│ memrate: read rate 21400.00 MB per sec                                                                             │
+│ memrate: write rate 18100.00 MB per sec                                                                            │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+│                                                                                                                    │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
