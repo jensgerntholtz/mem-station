@@ -147,12 +147,13 @@ TUI flags:
   --dark[=false]    dark theme (default true)
   --no-color        disable color output
   --mouse           enable mouse wheel scrolling
+  --imc             read raw IMC registers at startup (root; may need iomem=relaxed)
   --state-dir DIR   state directory (overrides MEM_STATION_STATE_DIR)
   --job PATH        burn-in job file (overrides MEM_STATION_JOB)
   --version         print the version and exit
 
 Headless flags:
-  info:   -json
+  info:   -json -imc   (-imc reads raw IMC registers; needs root and may need iomem=relaxed)
   bench:  -duration 15s|30s|1m|5m -buffer 128M|256M|512M|1G -workers N -json -out PATH
   burnin: -duration 5m|10m|30m|1h -preset NAME -job PATH -json -out PATH
 

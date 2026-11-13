@@ -181,7 +181,7 @@ var fields = []Field{
 	},
 	{
 		ID: FieldFreq, Label: "DRAM Freq", Unit: "MT/s", Group: GroupGeneral, Kind: KindInt,
-		Default: "1600", Step: 1, Scale: 1, Desc: "Effective DRAM frequency in MT/s.",
+		Default: "1600", Step: 100, Scale: 1, Desc: "Effective DRAM frequency in MT/s.",
 		Key: config.KeyFreq, DetectLabel: "DRAM Freq",
 		Bounds: func(ValidationContext) Bounds {
 			return Bounds{Min: 800, Max: 5000, HasMin: true, HasMax: true, Unit: "MT/s",

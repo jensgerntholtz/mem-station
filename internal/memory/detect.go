@@ -5,6 +5,7 @@ import (
 	"math"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -187,6 +188,42 @@ func ParseSPDInfo(spd string) *SPDInfo {
 		}
 	}
 	return info
+}
+
+// SupportedFrequencies returns the DRAM data rates named by SPD, sorted and
+// de-duplicated. Only values present in the SPD data are returned; the UI uses
+// this as an advisory list and still allows a custom frequency.
+func (s SPDInfo) SupportedFrequencies() []string {
+	seen := map[int]bool{}
+	ddr := regexp.MustCompile(`(?i)DDR[2345]-(\d{3,5})`)
+	mt := regexp.MustCompile(`(?i)(\d{3,5})\s*MT/s`)
+	add := func(text string) {
+		for _, re := range []*regexp.Regexp{ddr, mt} {
+			for _, m := range re.FindAllStringSubmatch(text, -1) {
+				if len(m) < 2 {
+					continue
+				}
+				v, err := strconv.Atoi(m[1])
+				if err == nil && v >= 200 && v <= 20000 {
+					seen[v] = true
+				}
+			}
+		}
+	}
+	add(s.ModuleSpeed)
+	for _, profile := range s.TimingsBySpeed {
+		add(profile)
+	}
+	values := make([]int, 0, len(seen))
+	for v := range seen {
+		values = append(values, v)
+	}
+	sort.Ints(values)
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = strconv.Itoa(v)
+	}
+	return out
 }
 
 // SizeLabel returns the module size with a unit. dmidecode reports values such

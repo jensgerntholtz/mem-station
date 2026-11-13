@@ -11,6 +11,8 @@ import (
 type KeyMap struct {
 	Up        key.Binding
 	Down      key.Binding
+	Inc       key.Binding
+	Dec       key.Binding
 	Edit      key.Binding
 	Cancel    key.Binding
 	Next      key.Binding
@@ -36,6 +38,8 @@ func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		Up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "select")),
 		Down:      key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "select")),
+		Inc:       key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "increase")),
+		Dec:       key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "decrease")),
 		Edit:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "edit")),
 		Cancel:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel/reset")),
 		Next:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next field")),
@@ -65,7 +69,7 @@ func (m *Model) Keys() []ui.KeyHint {
 	case m.subView != subTimings:
 		return hints(m.keys.ScrollUp, m.keys.ScrollDn, m.keys.PrevView, m.keys.NextView)
 	default:
-		return hints(m.keys.Up, m.keys.Edit, m.keys.Next, m.keys.RatioLock, m.keys.Apply, m.keys.NextView)
+		return hints(m.keys.Up, m.keys.Dec, m.keys.Inc, m.keys.Edit, m.keys.Next, m.keys.RatioLock, m.keys.Apply, m.keys.NextView)
 	}
 }
 
@@ -98,8 +102,8 @@ func (m *Model) Help() []ui.HelpSection {
 		}
 	}
 	tab := ui.HelpSection{Title: "Timings", Rows: hints(
-		m.keys.Up, m.keys.Down, m.keys.Edit, m.keys.Cancel, m.keys.Next, m.keys.Prev,
-		m.keys.RatioLock, m.keys.Apply, m.keys.ResetAll,
+		m.keys.Up, m.keys.Down, m.keys.Dec, m.keys.Inc, m.keys.Edit, m.keys.Cancel,
+		m.keys.Next, m.keys.Prev, m.keys.RatioLock, m.keys.Apply, m.keys.ResetAll,
 	)}
 	apply := ui.HelpSection{Title: "Apply", Rows: []ui.KeyHint{
 		{Key: "ctrl+s", Action: "review the diff, then enter to save"},

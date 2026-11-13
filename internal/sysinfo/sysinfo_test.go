@@ -665,3 +665,127 @@ func TestProfilePromptEmptyValue(t *testing.T) {
 		t.Error("esc did not close the prompt")
 	}
 }
+
+/* --------------- Field navigation and input masking --------------- */
+
+// TestArrowKeysAdjustNumericFields checks the selected value moves by the
+// field's declared step, without entering the text input.
+func TestArrowKeysAdjustNumericFields(t *testing.T) {
+	m := newTestModel(t)
+
+	m.focus = m.fieldIndex(FieldCL)
+	m.draft[FieldCL] = "16"
+	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if got := m.draft[FieldCL]; got != "17" {
+		t.Errorf("tCL after → = %q, want 17", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	if got := m.draft[FieldCL]; got != "16" {
+		t.Errorf("tCL after ← = %q, want 16", got)
+	}
+
+	m.focus = m.fieldIndex(FieldFreq)
+	m.draft[FieldFreq] = "3200"
+	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if got := m.draft[FieldFreq]; got != "3300" {
+		t.Errorf("freq after → = %q, want the 100 MT/s step", got)
+	}
+
+	m.focus = m.fieldIndex(FieldVoltage)
+	m.draft[FieldVoltage] = "1.35"
+	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if got := m.draft[FieldVoltage]; got != "1.36" {
+		t.Errorf("voltage after → = %q, want 1.36", got)
+	}
+}
+
+// TestArrowKeysCyclePresetValues checks enum fields use their allowed values
+// and wrap around, and Enter does not open an editor for them.
+func TestArrowKeysCyclePresetValues(t *testing.T) {
+	m := newTestModel(t)
+	m.focus = m.fieldIndex(FieldCR)
+	m.draft[FieldCR] = "1T"
+
+	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if got := m.draft[FieldCR]; got != "2T" {
+		t.Errorf("command rate after → = %q, want 2T", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if got := m.draft[FieldCR]; got != "1T" {
+		t.Errorf("command rate did not wrap: %q", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	if got := m.draft[FieldCR]; got != "2T" {
+		t.Errorf("command rate after ← = %q, want 2T", got)
+	}
+	if cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+		t.Error("Enter on a preset-only field should explain the ←/→ keys")
+	}
+	if m.editing {
+		t.Error("Enter opened a text editor for a preset-only field")
+	}
+}
+
+// TestArrowKeysUseSPDFrequencies checks the SPD speed list becomes the
+// frequency picker while still allowing a custom value via Enter.
+func TestArrowKeysUseSPDFrequencies(t *testing.T) {
+	m := newTestModel(t)
+	m.SetDetected(detectedValues(), "ok", &memory.SPDInfo{
+		ModuleSpeed:    "3200 MT/s",
+		TimingsBySpeed: []string{"DDR4-2133 15-15-15-36", "DDR4-3200 16-18-18-38", "DDR4-3600 18-20-20-40"},
+	})
+	m.focus = m.fieldIndex(FieldFreq)
+	m.draft[FieldFreq] = "3200"
+
+	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if got := m.draft[FieldFreq]; got != "3600" {
+		t.Errorf("freq after → = %q, want the next SPD speed 3600", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	if got := m.draft[FieldFreq]; got != "2133" {
+		t.Errorf("freq after ← ← = %q, want the previous SPD speed 2133", got)
+	}
+	if !m.startEditing() {
+		t.Error("SPD frequency presets must not prevent a custom frequency")
+	}
+}
+
+// TestNumericInputMasking checks integer and float editors reject characters
+// they cannot store, including pasted text.
+func TestNumericInputMasking(t *testing.T) {
+	m := newTestModel(t)
+	m.focus = m.fieldIndex(FieldCL)
+	m.startEditing()
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1a2.")})
+	if got := m.input.Value(); got != "12" {
+		t.Errorf("integer input = %q, want digits only", got)
+	}
+	m.cancelEdit()
+
+	m.focus = m.fieldIndex(FieldVoltage)
+	m.startEditing()
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1.3x5")})
+	if got := m.input.Value(); got != "1.35" {
+		t.Errorf("float input = %q, want one decimal point", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(".")})
+	if got := m.input.Value(); got != "1.35" {
+		t.Errorf("float input accepted a second decimal point: %q", got)
+	}
+}
+
+// TestArrowNavigationStillMovesFocus keeps the existing Up/Down behaviour
+// explicit now that Left/Right are also handled.
+func TestArrowNavigationStillMovesFocus(t *testing.T) {
+	m := newTestModel(t)
+	m.focus = 0
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.focus != 1 {
+		t.Errorf("↓ moved focus to %d, want 1", m.focus)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.focus != 0 {
+		t.Errorf("↑ moved focus to %d, want 0", m.focus)
+	}
+}

@@ -36,6 +36,7 @@ func runTUI(deps Deps, args []string) int {
 	dark := fs.Bool("dark", true, "use the dark theme (pass --dark=false for light)")
 	noColor := fs.Bool("no-color", false, "disable color output")
 	mouse := fs.Bool("mouse", false, "enable mouse wheel scrolling")
+	imc := fs.Bool("imc", false, "read raw IMC registers at startup (root; may need iomem=relaxed)")
 	stateDir := fs.String("state-dir", "", "state directory (overrides MEM_STATION_STATE_DIR)")
 	job := fs.String("job", "", "burn-in job file (overrides MEM_STATION_JOB)")
 	version := fs.Bool("version", false, "print the version and exit")
@@ -68,6 +69,7 @@ func runTUI(deps Deps, args []string) int {
 	opts.StateDir = *stateDir
 	opts.Dark = *dark
 	opts.Mouse = *mouse
+	opts.IMC = *imc
 	opts.Version = deps.Version
 
 	if err := deps.RunTUI(opts); err != nil {

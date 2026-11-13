@@ -136,3 +136,15 @@ func TestMouseWheelScrollsViewports(t *testing.T) {
 		t.Error("wheel produced a command with mouse support disabled")
 	}
 }
+
+// TestIMCKeyStartsOptInRead checks the raw IMC read is available on demand
+// without being part of the default startup path.
+func TestIMCKeyStartsOptInRead(t *testing.T) {
+	m := testModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("I")})
+	if cmd == nil {
+		t.Fatal("I did not start an IMC register read")
+	}
+}

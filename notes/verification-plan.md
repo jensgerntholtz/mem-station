@@ -111,8 +111,10 @@ modal, Error banner.
 - Plain `1/2/3` while editing type digits; `Ctrl+1..3` and `F1..F3` switch
   tabs from anywhere.
 - `Tab`/`Shift+Tab` commit and move focus; `Up`/`Down` move when selected;
-  `Enter` starts editing; `Esc` cancels the edit; second `Esc` reverts the
-  field (or the draft, per the final behavior documented in the handoff).
+  `Left`/`Right` decrease/increase the selected numeric value by its `Step`,
+  or cycle preset values; `Enter` starts editing (except preset-only fields);
+  `Esc` cancels the edit; second `Esc` reverts the field (or the draft, per the
+  final behavior documented in the handoff).
 - `?` toggles help; `Esc` closes it; help scrolls if longer than the screen.
 - Mouse disabled by default; if `--mouse` is enabled, wheel scrolls viewports
   and does not break text selection or flood events.
@@ -125,7 +127,13 @@ modal, Error banner.
 - With detection available, detected values populate; SPD/IMC sub-views show
   all parsed fields; `[`/`]` switch views and preserve state.
 - Enter a frequency change with ratio lock on: primary timings scale once from
-  the previous frequency; they do not compound on each keystroke.
+  the previous frequency; they do not compound on each keystroke. The same
+  applies when `Left`/`Right` changes the frequency.
+- Numeric fields accept digits only (plus one decimal point for voltage); try
+  typing letters and pasting an invalid value. `Command Rate` cycles `1T`/`2T`
+  with `Left`/`Right` and does not open a text editor. With SPD data, the
+  frequency field cycles the detected speed list while still allowing a custom
+  value through `Enter`.
 - Set tCL below the minimum: red `x` with margin text; above soft max: warning
   `!`; valid: `check`. Verify at least one case each, plus voltage 1.30/1.35/
   1.70 V and CR 1T/2T.
@@ -184,11 +192,14 @@ modal, Error banner.
 - Headless:
   ```bash
   go run ./cmd/mem-station info --json
+  go run ./cmd/mem-station info --json -imc   # opt-in raw IMC read
   go run ./cmd/mem-station bench --duration 15s --buffer 256M --json
   go run ./cmd/mem-station burnin --duration 1m --json
   ```
   JSON is valid, exits are meaningful, stderr is separate, SIGINT cancels.
-- `--version`, `--tab`, `--no-color`, `--dark` behave as documented.
+- `--version`, `--tab`, `--no-color`, `--dark`, `--imc` behave as documented.
+- `info` without `-imc` never opens `/dev/mem`; `-imc` reports a clear
+  root/iomem error on an unsupported or unprivileged system.
 
 ### 4.7 Theme and accessibility
 

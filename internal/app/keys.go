@@ -12,6 +12,7 @@ type KeyMap struct {
 	Help        key.Binding
 	RetryDetect key.Binding
 	Elevate     key.Binding
+	IMC         key.Binding
 	Tab1        key.Binding
 	Tab2        key.Binding
 	Tab3        key.Binding
@@ -24,6 +25,7 @@ func DefaultKeyMap() KeyMap {
 		Help:        key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		RetryDetect: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "retry detection")),
 		Elevate:     key.NewBinding(key.WithKeys("E"), key.WithHelp("E", "elevate (sudo)")),
+		IMC:         key.NewBinding(key.WithKeys("I"), key.WithHelp("I", "read IMC registers")),
 		Tab1:        key.NewBinding(key.WithKeys("f1", "ctrl+1"), key.WithHelp("f1/1", "timings")),
 		Tab2:        key.NewBinding(key.WithKeys("f2", "ctrl+2"), key.WithHelp("f2/2", "benchmark")),
 		Tab3:        key.NewBinding(key.WithKeys("f3", "ctrl+3"), key.WithHelp("f3/3", "burn-in")),

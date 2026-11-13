@@ -7,18 +7,18 @@
  │   esc  close help                                                          │ 
  │   R  retry detection (unprivileged)                                        │ 
  │   E  elevate detection with sudo                                           │ 
+ │   I  read raw IMC registers (opt-in)                                       │ 
  │   ctrl+c  cancel a running job, else quit                                  │ 
  │   q  quit                                                                  │ 
  │                                                                            │ 
  │ Timings                                                                    │ 
  │   ↑/k  select                                                              │ 
  │   ↓/j  select                                                              │ 
+ │   ←  decrease                                                              │ 
+ │   →  increase                                                              │ 
  │   enter  edit                                                              │ 
  │   esc  cancel/reset                                                        │ 
  │   tab  next field                                                          │ 
- │   shift+tab  prev field                                                    │ 
- │   l  ratio lock                                                            │ 
- │   ctrl+s  apply profile                                                    │ 
  │ ↑/↓ scroll · esc close                                                     │ 
  ╰────────────────────────────────────────────────────────────────────────────╯ 
- Detected 2 channels at 32…↑/k select  enter edit  tab next field  l ratio lock 
+ Detected 2 channels at 3200 MT/s↑/k select  ← decrease  → increase  enter edit 

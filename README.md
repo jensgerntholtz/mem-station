@@ -25,8 +25,10 @@ CPU: Intel(R) Core(TM) i5-4670K (4) @ 4.00 GHz
 - `stress-ng` for benchmark and burn-in runs (the TUI and the headless commands
   report a clear error when it is missing)
 - `dmidecode` and/or `decode-dimms` for hardware detection; both usually need
-  root, and the IMC register view additionally needs `iomem=relaxed` on the
-  kernel command line
+  root
+- Raw IMC registers are optional. They are read only with `--imc` or the `I`
+  key, need root, and may need `iomem=relaxed` on the kernel command line.
+  Normal detection uses DMI/SPD and does not open `/dev/mem`.
 - A terminal of at least 80x24
 
 Detection failing is not fatal: the app starts immediately, shows what it could
@@ -34,6 +36,16 @@ not read, and allows manual entry. When detection needs root, press `E` in the
 TUI to re-run it through `sudo` without restarting: the program releases the
 terminal, `sudo` prompts for a password, and the privileged result is loaded
 back into the Timings tab. `R` retries unprivileged detection.
+
+### Raw IMC access and `iomem=relaxed`
+
+Normal detection never opens `/dev/mem`: it uses `dmidecode` and
+`decode-dimms` SPD data. Raw IMC/tertiary timing registers are the only
+feature that needs direct MMIO, so they are opt-in (`--imc`, `I`, or
+`info -imc`). That path still needs root and, on strict kernels, the
+`iomem=relaxed` boot parameter. If you only need primary/secondary timings,
+remove `iomem=relaxed` and leave raw IMC access off. There is currently no
+unprivileged kernel interface that exposes those memory-controller registers.
 
 ## Build and run
 
@@ -53,6 +65,7 @@ go build -o mem-station ./cmd/mem-station
 | `--dark[=false]` | dark theme (default `true`); `--dark=false` selects the light palette |
 | `--no-color` | disable color (sets `NO_COLOR`/`CLICOLOR=0` before the first paint) |
 | `--mouse` | enable mouse wheel scrolling (cell motion only) |
+| `--imc` | read raw IMC registers at startup (root; may need `iomem=relaxed`) |
 | `--state-dir DIR` | state directory, overrides `MEM_STATION_STATE_DIR` |
 | `--job PATH` | burn-in job file, overrides `MEM_STATION_JOB` |
 | `--version` | print the version and exit |
@@ -72,6 +85,7 @@ Global keys work whenever no text input or modal owns the keyboard.
 | `?` | help overlay; `esc` closes it |
 | `R` | retry hardware detection (unprivileged) |
 | `E` | elevate: re-run detection through `sudo`, then reload it |
+| `I` | read raw IMC registers on demand (opt-in; root; may need `iomem=relaxed`) |
 | `ctrl+c` | cancel a running job, otherwise quit |
 | `q` | quit when not editing and no overlay is open |
 
@@ -80,7 +94,8 @@ Global keys work whenever no text input or modal owns the keyboard.
 | Key | Action |
 | --- | --- |
 | `↑`/`↓`, `j`/`k` | move between settings |
-| `enter` | edit the selected value |
+| `←`/`→` | decrease/increase the selected numeric value, or cycle preset values |
+| `enter` | edit the selected numeric value; preset-only fields use `←`/`→` |
 | `tab`/`shift+tab` | commit and move to the next/previous setting |
 | `esc` | cancel the edit; outside an edit it falls back through the views |
 | `l` | ratio lock: a frequency change rescales the primary timings once |
@@ -126,9 +141,15 @@ The same hardware/runner/store code powers scriptable commands. Human output goe
 to stdout, diagnostics to stderr, and `-json` prints exactly one JSON document on
 stdout.
 
+The direct IMC register reader has verified layouts for Intel Sandy Bridge, Ivy
+Bridge, Haswell, and Broadwell. Other CPUs still get primary/secondary timings
+from DMI/SPD; the app reports the IMC register view as unsupported rather than
+guessing at an unknown register layout.
+
 ```bash
-mem-station info                       # detected values, SPD, IMC
+mem-station info                       # detected values and SPD (no raw registers)
 mem-station info -json
+mem-station info -json -imc            # opt-in raw IMC registers (root; may need iomem=relaxed)
 
 mem-station bench -duration 30s -buffer 256M -workers 1
 mem-station bench -duration 30s -json

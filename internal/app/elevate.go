@@ -45,8 +45,12 @@ func (m *Model) elevateCmd() tea.Cmd {
 		return m.setStatus("Cannot elevate: "+err.Error(), ui.LevelError)
 	}
 
+	args := []string{exe, "info", "-json"}
+	if m.opts.IMC || m.imcRequested {
+		args = append(args, "-imc")
+	}
 	var out bytes.Buffer
-	cmd := exec.Command("sudo", exe, "info", "-json")
+	cmd := exec.Command("sudo", args...)
 	// Capture stdout; stdio is otherwise wired to the released terminal, so the
 	// sudo password prompt still works while the JSON never hits the screen.
 	cmd.Stdout = &out
