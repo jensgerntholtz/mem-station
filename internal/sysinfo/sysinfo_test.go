@@ -258,15 +258,18 @@ func TestEditApplyRoundTrip(t *testing.T) {
 	if !m.ModalOpen() {
 		t.Fatal("ctrl+s did not open the apply review")
 	}
-	view := m.View(78, 21)
-	if !strings.Contains(view, "Profile only - not written to hardware") {
-		t.Errorf("apply review is missing the hardware disclaimer:\n%s", view)
+	dialog, ok := m.Overlay(78, 21)
+	if !ok {
+		t.Fatal("ctrl+s did not expose an overlay dialog")
 	}
-	if got := lipgloss.Height(view); got != 21 {
-		t.Errorf("apply review height = %d, want 21", got)
+	if !strings.Contains(dialog, "Profile only - not written to hardware") {
+		t.Errorf("apply review is missing the hardware disclaimer:\n%s", dialog)
 	}
-	if got := lipgloss.Width(view); got != 78 {
-		t.Errorf("apply review width = %d, want 78", got)
+	if got := lipgloss.Height(dialog); got > 21 {
+		t.Errorf("apply review height = %d, want at most 21", got)
+	}
+	if got := lipgloss.Width(dialog); got > 78 {
+		t.Errorf("apply review width = %d, want at most 78", got)
 	}
 
 	if cmd := m.Update(uitest.Code(tea.KeyEnter)); cmd == nil {

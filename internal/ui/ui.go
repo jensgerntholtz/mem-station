@@ -285,6 +285,7 @@ func HelpOverlayAt(width, height int, sections []HelpSection, offset int) string
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(th.BorderFocus).
+		Background(th.Bg).
 		Padding(0, 1).
 		Width(width).
 		Height(height)
@@ -302,9 +303,28 @@ func Modal(title string, body []string, width int) string {
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(th.BorderFocus).
+		Background(th.Bg).
 		Padding(0, 1).
 		Width(width)
 	return border.Render(strings.Join(lines, "\n"))
+}
+
+// Overlay composites dialog over base, centered in the region at (x, y) with
+// size w x h. base keeps its exact size; dialog is clipped to the region when
+// it does not fit. Both inputs are already rendered strings, and the caller is
+// responsible for giving the dialog an opaque background.
+func Overlay(base, dialog string, x, y, w, h int) string {
+	if dialog == "" || w < 1 || h < 1 {
+		return base
+	}
+	dialog = clipBlock(dialog, w, h)
+	dw, dh := lipgloss.Width(dialog), lipgloss.Height(dialog)
+	px := x + max(0, (w-dw)/2)
+	py := y + max(0, (h-dh)/2)
+	return lipgloss.NewCompositor(
+		lipgloss.NewLayer(base),
+		lipgloss.NewLayer(dialog).X(px).Y(py),
+	).Render()
 }
 
 // Progress renders an ASCII progress bar of the given total width.

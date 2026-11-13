@@ -1,40 +1,40 @@
   MemStation   0.2.0-dev  3200 MT/s · 16384 MB · F4-3200C16-16GVK  * unsaved changes                                    
    1 Timings ~    2 Benchmark    3 Burn-in                                                                              
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                            ╭──────────────────────────────────────────────────────────────╮                            
-                            │ Apply profile                                                │                            
-                            │                                                              │                            
-                            │ Review the differences, then confirm.                        │                            
-                            │                                                              │                            
-                            │ Channels       2 -> 24                                       │                            
-                            │                                                              │                            
-                            │ Warnings                                                     │                            
-                            │ ! Channels: above 8 channels                                 │                            
-                            │                                                              │                            
-                            │ Profile only - not written to hardware                       │                            
-                            │ enter confirm - esc cancel                                   │                            
-                            ╰──────────────────────────────────────────────────────────────╯                            
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
+ ╭───────────────────────────────────────────────────────────────────────╮  ╭─────────────────────────────────────────╮ 
+ │ Timings                                                               │  │ Guidance                                │ 
+ │ Setting           Detected   Draft      Margin    Safety              │  │ Perf Projection                         │ 
+ │ General                                                               │  │ Peak:      614.40 GB/s                  │ 
+ │ Channels          2          24         +16       ! above 8 channels  │  │ Per chan:  25.60 GB/s                   │ 
+ │ DRAM Ratio        16         16                                       │  │ Sustained: 503.81 GB/s (82% eff)        │ 
+ │ DRAM Freq         3200       3200       +2400     ok                  │  │ CAS:       10.00 ns                     │ 
+ │                                                                       │  │ vs applied: +563.20 GB/s (+1100.0%)     │ 
+ │ Primary Timings                                                       │  │                                         │ 
+ │ CAS (tCL)         16         16         0         ok                  │  │ Derived                                 │ 
+ │ tRCD              18         18         +2        ok                  │  │ tRC:  35.0 ns (tRAS+tRP)                │ 
+ │ tRP               18         18         +2        ok                  │  │ tRFC: 218.8 ns (min 160 ns)             │ 
+ │ tRAS              38     ╭──────────────────────────────────────────────────────────────╮                          │ 
+ │                          │ Apply profile                                                │                          │ 
+ │ Secondary Timings        │                                                              │ry channels.              │ 
+ │ Command Rate      1T     │ Review the differences, then confirm.                        │                          │ 
+ │ tRFC              350    │                                                              │nels (1-8)                │ 
+ │                          │ Channels       2 -> 24                                       │                          │ 
+ │ Voltage                  │                                                              │                          │ 
+ │ DRAM Voltage      1.35 V │ Warnings                                                     │s                         │ 
+ │ ←/→ adjust - ctrl+s apply│ ! Channels: above 8 channels                                 │                          │ 
+ │                          │                                                              │                          │ 
+ │                          │ Profile only - not written to hardware                       │                          │ 
+ │                          │ enter confirm - esc cancel                                   │                          │ 
+ │                          ╰──────────────────────────────────────────────────────────────╯                          │ 
+ │                                                                       │  │ ok                                      │ 
+ │                                                                       │  │ Detected 2 channels at 3200 MT/s        │ 
+ │                                                                       │  │ IMC: Raw MCHBAR registers are opt-in; … │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │ Views                                   │ 
+ │                                                                       │  │ [ / ]  Timings - SPD - IMC              │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ ╰───────────────────────────────────────────────────────────────────────╯  ╰─────────────────────────────────────────╯ 
  Detected 2 channels at 3200 MT/s                                                             enter confirm  esc cancel 

@@ -18,6 +18,9 @@ var historyColumnWidths = []int{12, 9, 5, 6, 24}
 // maxHistoryRows bounds the history rows shown above the log.
 const maxHistoryRows = 4
 
+// Overlay reports no dialog: the run tabs have no modal state.
+func (m *Model) Overlay(int, int) (string, bool) { return "", false }
+
 // View renders the tab into exactly w x h cells.
 func (m *Model) View(w, h int) string {
 	contentH := h - 3 // border 2 + title 1

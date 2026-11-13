@@ -1,40 +1,40 @@
   MemStation   0.2.0-dev  3200 MT/s · 16384 MB · F4-3200C16-16GVK                                                       
    1 Timings    2 Benchmark    3 Burn-in                                                                                
- ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ 
- │ Global                                                                                                             │ 
- │   f1/f2/f3  switch tabs (or 1/2/3)                                                                                 │ 
- │   ?  toggle help                                                                                                   │ 
- │   esc  close help                                                                                                  │ 
- │   R  retry detection (unprivileged)                                                                                │ 
- │   E  elevate detection with sudo                                                                                   │ 
- │   I  read raw IMC registers (opt-in)                                                                               │ 
- │   ctrl+c  cancel a running job, else quit                                                                          │ 
- │   q  quit                                                                                                          │ 
- │                                                                                                                    │ 
- │ Timings                                                                                                            │ 
- │   ↑/k  select                                                                                                      │ 
- │   ↓/j  select                                                                                                      │ 
- │   ←  decrease                                                                                                      │ 
- │   →  increase                                                                                                      │ 
- │   enter  edit                                                                                                      │ 
- │   esc  cancel/reset                                                                                                │ 
- │   tab  next field                                                                                                  │ 
- │   shift+tab  prev field                                                                                            │ 
- │   l  ratio lock                                                                                                    │ 
- │   ctrl+s  apply profile                                                                                            │ 
- │   ctrl+r  reset draft                                                                                              │ 
- │                                                                                                                    │ 
- │ Apply                                                                                                              │ 
- │   ctrl+s  review the diff, then enter to save                                                                      │ 
- │   esc  revert the draft / cancel the review                                                                        │ 
- │                                                                                                                    │ 
- │ Views                                                                                                              │ 
- │   [  prev view                                                                                                     │ 
- │   ]  next view                                                                                                     │ 
- │   pgup  scroll up                                                                                                  │ 
- │   pgdown  scroll down                                                                                              │ 
- │                                                                                                                    │ 
- │ Profiles                                                                                                           │ 
- │ ↑/↓ scroll · esc close                                                                                             │ 
- ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
+ ╭───────────────────────────────────────────────────────────────────────╮  ╭─────────────────────────────────────────╮ 
+ │ Timings    ╭──────────────────────────────────────────────────────────────────────────────────────────╮            │ 
+ │ Setting    │ Global                                                                                   │            │ 
+ │ General    │   f1/f2/f3  switch tabs (or 1/2/3)                                                       │            │ 
+ │ Channels   │   ?  toggle help                                                                         │            │ 
+ │ DRAM Ratio │   esc  close help                                                                        │ff)         │ 
+ │ DRAM Freq  │   R  retry detection (unprivileged)                                                      │            │ 
+ │            │   E  elevate detection with sudo                                                         │            │ 
+ │ Primary Tim│   I  read raw IMC registers (opt-in)                                                     │            │ 
+ │ CAS (tCL)  │   ctrl+c  cancel a running job, else quit                                                │            │ 
+ │ tRCD       │   q  quit                                                                                │            │ 
+ │ tRP        │                                                                                          │            │ 
+ │ tRAS       │ Timings                                                                                  │            │ 
+ │            │   ↑/k  select                                                                            │            │ 
+ │ Secondary T│   ↓/j  select                                                                            │            │ 
+ │ Command Rat│   ←  decrease                                                                            │            │ 
+ │ tRFC       │   →  increase                                                                            │            │ 
+ │            │   enter  edit                                                                            │            │ 
+ │ Voltage    │   esc  cancel/reset                                                                      │            │ 
+ │ DRAM Voltag│   tab  next field                                                                        │            │ 
+ │ ←/→ adjust │   shift+tab  prev field                                                                  │            │ 
+ │            │   l  ratio lock                                                                          │            │ 
+ │            │   ctrl+s  apply profile                                                                  │            │ 
+ │            │   ctrl+r  reset draft                                                                    │            │ 
+ │            │                                                                                          │            │ 
+ │            │ Apply                                                                                    │MT/s        │ 
+ │            │   ctrl+s  review the diff, then enter to save                                            │e opt-in; … │ 
+ │            │   esc  revert the draft / cancel the review                                              │            │ 
+ │            │                                                                                          │            │ 
+ │            │ Views                                                                                    │            │ 
+ │            │   [  prev view                                                                           │            │ 
+ │            │   ]  next view                                                                           │            │ 
+ │            │   pgup  scroll up                                                                        │            │ 
+ │            │   pgdown  scroll down                                                                    │            │ 
+ │            │ ↑/↓ scroll · esc close                                                                   │            │ 
+ │            ╰──────────────────────────────────────────────────────────────────────────────────────────╯            │ 
+ ╰───────────────────────────────────────────────────────────────────────╯  ╰─────────────────────────────────────────╯ 
  Detected 2 channels at 3200 MT/s          ↑/k select  ← decrease  → increase  enter edit  tab next field  l ratio lock 

@@ -1,40 +1,40 @@
   MemStation   0.2.0-dev  3200 MT/s · 16384 MB · F4-3200C16-16GVK                                                       
    1 Timings    2 Benchmark    3 Burn-in                                                                                
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                            ╭──────────────────────────────────────────────────────────────╮                            
-                            │ Save profile as                                              │                            
-                            │                                                              │                            
-                            │ name for the current draft, e.g. daily-3200                  │                            
-                            │                                                              │                            
-                            │ >                                                            │                            
-                            │                                                              │                            
-                            │ enter confirm - esc cancel                                   │                            
-                            ╰──────────────────────────────────────────────────────────────╯                            
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
-                                                                                                                        
+ ╭───────────────────────────────────────────────────────────────────────╮  ╭─────────────────────────────────────────╮ 
+ │ Timings                                                               │  │ Guidance                                │ 
+ │ Setting           Detected   Draft      Margin    Safety              │  │ Perf Projection                         │ 
+ │ General                                                               │  │ Peak:      51.20 GB/s                   │ 
+ │ Channels          2          2          +1        ok                  │  │ Per chan:  25.60 GB/s                   │ 
+ │ DRAM Ratio        16         16                                       │  │ Sustained: 41.98 GB/s (82% eff)         │ 
+ │ DRAM Freq         3200       3200       +2400     ok                  │  │ CAS:       10.00 ns                     │ 
+ │                                                                       │  │                                         │ 
+ │ Primary Timings                                                       │  │ Derived                                 │ 
+ │ CAS (tCL)         16         16         0         ok                  │  │ tRC:  35.0 ns (tRAS+tRP)                │ 
+ │ tRCD              18         18         +2        ok                  │  │ tRFC: 218.8 ns (min 160 ns)             │ 
+ │ tRP               18         18         +2        ok                  │  │                                         │ 
+ │ tRAS              38         38         +4        ok                  │  │ Channels                                │ 
+ │                                                                       │  │ Populated memory channels.              │ 
+ │ Secondary Timings        ╭──────────────────────────────────────────────────────────────╮                          │ 
+ │ Command Rate      1T     │ Save profile as                                              │nels (1-8)                │ 
+ │ tRFC              350    │                                                              │                          │ 
+ │                          │ name for the current draft, e.g. daily-3200                  │                          │ 
+ │ Voltage                  │                                                              │ds                        │ 
+ │ DRAM Voltage      1.35 V │ >                                                            │                          │ 
+ │ ←/→ adjust - ctrl+s apply│                                                              │                          │ 
+ │                          │ enter confirm - esc cancel                                   │                          │ 
+ │                          ╰──────────────────────────────────────────────────────────────╯                          │ 
+ │                                                                       │  │ Detection                               │ 
+ │                                                                       │  │ ok                                      │ 
+ │                                                                       │  │ Detected 2 channels at 3200 MT/s        │ 
+ │                                                                       │  │ IMC: Raw MCHBAR registers are opt-in; … │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │ Views                                   │ 
+ │                                                                       │  │ [ / ]  Timings - SPD - IMC              │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ ╰───────────────────────────────────────────────────────────────────────╯  ╰─────────────────────────────────────────╯ 
  Detected 2 channels at 3200 MT/s                                                             enter confirm  esc cancel 
