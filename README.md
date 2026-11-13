@@ -192,6 +192,17 @@ TUI runs; `--job`/`MEM_STATION_JOB` adds a custom job as a second preset.
 
 ## Development
 
+`make` is the single entry point; CI runs the same targets.
+
+```bash
+make            # gofmt, vet, build, test (what CI runs)
+make race       # the suite under -race
+make integration # tagged runner tests (launches /bin/sh only)
+make goldens    # rewrite golden views, then print the diff summary
+```
+
+The raw commands remain available:
+
 ```bash
 gofmt -l .          # must print nothing
 go vet ./...
@@ -199,10 +210,16 @@ go build ./...
 go test ./...
 go test -tags integration ./internal/runner   # launches /bin/sh only
 go test ./... -run TestGolden -update         # rewrite golden views
+go test ./internal/app -run TestGolden -update  # the same, scoped to one package
 ```
 
-CI runs gofmt, vet, build, and the default test suite on `ubuntu-latest` with no
-root and no hardware.
+The `-update` flag only exists in test binaries that link `internal/uitest`, so
+`go test ./... -update` fails in packages without golden tests. Use the
+`MEM_STATION_UPDATE_GOLDEN=1` environment variable (or `make goldens`) for a
+repo-wide update; review the diff before committing.
+
+CI runs gofmt, vet, build, the default test suite and the race suite on
+`ubuntu-latest` with no root and no hardware.
 
 Layout: `internal/app` is the shell (layout, global keys, routing); tabs live in
 `internal/sysinfo`, `internal/benchmark`, and `internal/burnin` and never import

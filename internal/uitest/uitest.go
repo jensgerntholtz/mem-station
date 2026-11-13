@@ -20,20 +20,34 @@ var update = flag.Bool("update", false, "rewrite golden files")
 // ansiRe matches CSI/SGR escape sequences emitted by lipgloss.
 var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*[a-zA-Z]")
 
-// Update reports whether goldens should be rewritten (-update).
-func Update() bool { return *update }
+// Update reports whether goldens should be rewritten. Either the -update flag
+// (which only exists in test binaries that link this package) or the
+// MEM_STATION_UPDATE_GOLDEN environment variable rewrites them. The env var is
+// what makes `go test ./... -run TestGolden` work repo-wide: packages without
+// golden tests never register the flag, so passing -update to ./... fails
+// before any test runs.
+func Update() bool {
+	if *update {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("MEM_STATION_UPDATE_GOLDEN"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
 
 // StripANSI removes escape sequences so goldens do not depend on the terminal
 // color profile.
 func StripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
-// Golden compares got with dir/name, creating or rewriting it when -update is
-// set. Comparison ignores ANSI sequences and trailing newlines.
+// Golden compares got with dir/name, creating or rewriting it when Update is
+// true. Comparison ignores ANSI sequences and trailing newlines.
 func Golden(t *testing.T, dir, name, got string) {
 	t.Helper()
 	got = strings.TrimRight(StripANSI(got), "\n")
 	path := filepath.Join(dir, name)
-	if *update {
+	if Update() {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}

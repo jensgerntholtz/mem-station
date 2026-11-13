@@ -43,6 +43,14 @@ against external databases, stress-ng correctness itself.
 Run from `/home/jens/code/mem-station`:
 
 ```bash
+make            # gofmt, vet, build, test (identical to CI)
+make race       # go test ./... -race -count=1
+make integration # go vet/test -tags integration ./internal/runner
+```
+
+The underlying commands, if you prefer them raw:
+
+```bash
 gofmt -l .
 go vet ./...
 go build ./...
@@ -61,11 +69,12 @@ Expected:
 - Golden view tests pass at 80x24 and 120x40 (80x24 means a 78x21 body inside
   the fixed header/tab bar/footer). Every golden goes through the shared
   `internal/uitest` harness, which strips ANSI and owns the single `-update`
-  flag per test binary. Review diffs with `-update` only when the change is
-  intentional:
+  flag per test binary. The flag only exists where the harness is linked, so a
+  repo-wide update needs the environment variable (this is what `make goldens`
+  runs). Review the diff before committing:
   ```bash
-  go test ./... -run TestGolden -update
-  git diff -- 'testdata/*.golden'
+  MEM_STATION_UPDATE_GOLDEN=1 go test ./... -run TestGolden -count=1
+  git diff -- '*/testdata/*.golden'
   ```
 - Parser fixtures: bench and burn-in logs parse to expected values, including
   GB/s vs MB/s, missing rates, error lines, and non-zero exits.
