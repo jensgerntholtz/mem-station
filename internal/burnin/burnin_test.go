@@ -513,3 +513,50 @@ func TestStopCancelsRunningJob(t *testing.T) {
 		t.Error("Stop did not cancel the running job")
 	}
 }
+
+// TestEditJobEmbeddedPreset explains why the built-in job cannot be edited.
+func TestEditJobEmbeddedPreset(t *testing.T) {
+	m := newTestModel(t)
+	cmd := m.Update(uitest.Ctrl('e'))
+	if cmd == nil {
+		t.Fatal("ctrl+e on the embedded preset produced no message")
+	}
+	msg, ok := cmd().(ui.StatusMsg)
+	if !ok {
+		t.Fatalf("ctrl+e returned %T, want a status message", msg)
+	}
+	if msg.Level != ui.LevelWarn || !strings.Contains(msg.Text, "--job") {
+		t.Errorf("status = %+v, want a warning naming --job", msg)
+	}
+}
+
+// TestEditJobCustomFileWiresTheEditor checks that a selected custom job file
+// becomes an exec command and that a reload picks up edits.
+func TestEditJobCustomFileWiresTheEditor(t *testing.T) {
+	t.Setenv("EDITOR", "/bin/true")
+	path := filepath.Join(t.TempDir(), "custom.job")
+	if err := os.WriteFile(path, []byte("timeout 1m\nrun memrate 1\n"), 0o600); err != nil {
+		t.Fatalf("write job: %v", err)
+	}
+
+	m := New(path, testSnapshot())
+	m.Update(uitest.Key("l")) // cycle to the custom preset
+	if got := m.preset().Path; got != path {
+		t.Fatalf("selected preset path = %q, want %q", got, path)
+	}
+	if cmd := m.Update(uitest.Ctrl('e')); cmd == nil {
+		t.Fatal("ctrl+e on a custom job file did not start the editor")
+	}
+
+	// Rewriting the file and reporting the editor's exit reloads the preset.
+	if err := os.WriteFile(path, []byte("timeout 1m\nrun memrate 2\n"), 0o600); err != nil {
+		t.Fatalf("rewrite job: %v", err)
+	}
+	cmd := m.Update(editJobMsg{})
+	if cmd == nil {
+		t.Fatal("returning from the editor produced no status message")
+	}
+	if got := string(m.preset().Content); !strings.Contains(got, "memrate 2") {
+		t.Errorf("preset was not reloaded after editing:\n%s", got)
+	}
+}

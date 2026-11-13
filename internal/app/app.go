@@ -45,6 +45,9 @@ type Tab interface {
 	ModalOpen() bool
 	// Running reports whether the tab has an active job.
 	Running() bool
+	// Progress reports the active job's completion in 0..1, or -1 when no job
+	// is running. The shell forwards it to the terminal's native progress bar.
+	Progress() float64
 	// Dirty reports unsaved draft changes.
 	Dirty() bool
 	// Wants reports whether the tab owns runner events of a kind.

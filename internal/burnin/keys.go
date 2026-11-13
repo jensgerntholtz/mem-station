@@ -17,6 +17,7 @@ type KeyMap struct {
 	Filter   key.Binding
 	Follow   key.Binding
 	Export   key.Binding
+	EditJob  key.Binding
 	ScrollUp key.Binding
 	ScrollDn key.Binding
 }
@@ -33,6 +34,7 @@ func DefaultKeyMap() KeyMap {
 		Filter:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "errors/all")),
 		Follow:   key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "follow log")),
 		Export:   key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "save JSON")),
+		EditJob:  key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "edit job file")),
 		ScrollUp: key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup", "scroll")),
 		ScrollDn: key.NewBinding(key.WithKeys("pgdown"), key.WithHelp("pgdown", "scroll")),
 	}
@@ -51,6 +53,7 @@ func (m *Model) Help() []ui.HelpSection {
 				{Key: "e", Action: "toggle errors-only log filter"},
 				{Key: "f", Action: "toggle log follow"},
 				{Key: "s", Action: "save last result JSON"},
+				{Key: "ctrl+e", Action: "edit the selected job file in $EDITOR"},
 				{Key: "pgup/pgdown", Action: "scroll log"},
 			},
 		},

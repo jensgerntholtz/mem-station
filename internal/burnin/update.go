@@ -29,6 +29,8 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		return m.handleEvent(msg.Ev)
+	case editJobMsg:
+		return m.handleEditJob(msg)
 	}
 	return nil
 }
@@ -68,6 +70,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	case key.Matches(msg, m.keys.Export):
 		return m.export()
+	case key.Matches(msg, m.keys.EditJob):
+		if !m.Running() {
+			return m.editJob()
+		}
 	case key.Matches(msg, m.keys.ScrollUp):
 		m.follow = false
 		m.vp.PageUp()

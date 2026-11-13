@@ -414,3 +414,32 @@ func TestRunTabsAreExactSizeWhileRunning(t *testing.T) {
 		}
 	}
 }
+
+// TestNativeProgressBarFollowsTheRunningJob checks the shell reports job
+// progress to the terminal only while a run is active.
+func TestNativeProgressBarFollowsTheRunningJob(t *testing.T) {
+	m := testModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	if v := m.View(); v.ProgressBar != nil {
+		t.Fatalf("idle view has a progress bar: %+v", v.ProgressBar)
+	}
+
+	m.switchTab(2)
+	m.Update(msgs.JobEvent{Ev: runner.Event{
+		Kind: runner.KindBurnIn, Type: runner.EventStarted, At: time.Now(),
+	}})
+	v := m.View()
+	if v.ProgressBar == nil {
+		t.Fatal("a running burn-in did not report progress")
+	}
+	if v.ProgressBar.Value < 0 || v.ProgressBar.Value > 100 {
+		t.Errorf("progress value = %d, want 0..100", v.ProgressBar.Value)
+	}
+
+	m.Update(msgs.JobEvent{Ev: runner.Event{
+		Kind: runner.KindBurnIn, Type: runner.EventFinished, At: time.Now(),
+	}})
+	if v := m.View(); v.ProgressBar != nil {
+		t.Errorf("finished job still reports progress: %+v", v.ProgressBar)
+	}
+}

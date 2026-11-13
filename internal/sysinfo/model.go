@@ -257,6 +257,9 @@ func (m *Model) Running() bool { return false }
 // Wants reports whether this tab owns runner events of the given kind.
 func (m *Model) Wants(runner.Kind) bool { return false }
 
+// Progress reports -1: the Timings tab never runs a job.
+func (m *Model) Progress() float64 { return -1 }
+
 // Dirty reports whether the draft differs from the applied values.
 func (m *Model) Dirty() bool {
 	for _, f := range m.fields {

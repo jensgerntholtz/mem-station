@@ -24,6 +24,9 @@ func (m *Model) View() tea.View {
 	if m.opts.Mouse {
 		v.MouseMode = tea.MouseModeCellMotion
 	}
+	if p := m.tabs[m.active].Progress(); p >= 0 {
+		v.ProgressBar = tea.NewProgressBar(tea.ProgressBarDefault, int(p*100))
+	}
 	return v
 }
 
