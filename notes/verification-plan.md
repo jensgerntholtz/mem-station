@@ -1,7 +1,10 @@
 # Verification Plan (Summary)
 
-Status: **not executed in the implementation session, by owner request.**
-This document is the plan to run in a later session before the
+Status: **automated checks pass as of Phase 4; the manual matrix is still
+unexecuted.** Phases 0-3 wrote code without running it. Phase 4 re-enabled the
+automated checks (`gofmt`, `go vet`, `go build`, `go test`) and fixed what they
+found; the interactive TUI, `stress-ng` runs, and the hardware matrix below have
+never been executed. Run this plan in a later session before the
 `tui-improvements` branch is considered merge-ready.
 
 ## 1. Scope
@@ -45,6 +48,8 @@ go vet ./...
 go build ./...
 go test ./... -count=1
 go test ./... -race -count=1
+go vet -tags integration ./internal/runner        # compiles the tagged tests
+go test -tags integration ./internal/runner       # /bin/sh only, no stress-ng
 ```
 
 Expected:
@@ -53,10 +58,13 @@ Expected:
 - `go build ./...` succeeds (this was broken by root `mchbar.go` before).
 - All tests pass; no test requires root, hardware, or `stress-ng` unless
   explicitly tagged.
-- Golden view tests pass at 80x24 and 120x40; review diffs with `-update` only
-  when the change is intentional:
+- Golden view tests pass at 80x24 and 120x40 (80x24 means a 78x21 body inside
+  the fixed header/tab bar/footer). Every golden goes through the shared
+  `internal/uitest` harness, which strips ANSI and owns the single `-update`
+  flag per test binary. Review diffs with `-update` only when the change is
+  intentional:
   ```bash
-  go test ./internal/sysinfo ./internal/benchmark ./internal/burnin -run TestGolden -update
+  go test ./... -run TestGolden -update
   git diff -- 'testdata/*.golden'
   ```
 - Parser fixtures: bench and burn-in logs parse to expected values, including
@@ -70,8 +78,10 @@ Expected:
   editing types digits; `?` opens help; `esc` closes modal before cancelling a
   draft.
 
-CI (`.github/workflows/ci.yml`) must run the same gofmt/vet/test/build steps on
-`ubuntu-latest` and pass. CI does not run hardware or long burn-in tests.
+CI (`.github/workflows/ci.yml`) runs gofmt, `go vet ./...`, `go build ./...`,
+and `go test ./... -count=1` on `ubuntu-latest`. CI does not run hardware, the
+tagged integration tests, or long burn-in tests; the push to this branch is the
+first real CI run of that workflow (it has never executed).
 
 ## 4. Manual TUI matrix
 
@@ -163,9 +173,14 @@ modal, Error banner.
 - Quit/restart: active profile and history reload; history comparison still
   valid.
 - Export profile and run JSON; validate schema and that no secrets/paths are
-  surprising.
-- Import a profile: invalid JSON rejected; valid values merge as a draft, not
-  hardware.
+  surprising. `ctrl+e` in the Timings tab prompts for a destination path and
+  writes mode 0600 (also for a path that does not exist yet).
+- `ctrl+p` saves the draft as a named profile; `ctrl+l` lists the saved names in
+  the prompt hint and loads one into the draft. Neither changes the applied
+  profile.
+- Import a profile with `ctrl+o`: broken JSON, an empty `values` map, and an
+  unknown key all keep the modal open with the reason; a valid file merges as a
+  draft, not hardware.
 - Headless:
   ```bash
   go run ./cmd/mem-station info --json
@@ -177,9 +192,12 @@ modal, Error banner.
 
 ### 4.7 Theme and accessibility
 
-- `NO_COLOR=1`: output remains legible; severity still uses `check`/`!`/`x`.
-- Light and dark backgrounds: labels/values/status meet reasonable contrast;
-  no color-only state.
+- `NO_COLOR=1` and `--no-color`: output remains legible; severity still shows
+  `ok`/`?`/`!`/`x` markers and every verdict keeps its word (PASS/FAIL/
+  CANCELLED), so nothing depends on color.
+- Light and dark backgrounds (`--dark` vs `--dark=false`): labels/values/status
+  meet reasonable contrast; focus (selected field, active tab, focused panel
+  border) stays distinguishable from the inactive state.
 - 256-color and 16-color terminals degrade without losing status text.
 - ANSI escapes are not printed raw; no `fmt.Println` output leaks into the alt
   screen.
@@ -206,9 +224,10 @@ Merge-ready only if all are true:
 
 ## 6. Known risks and things to watch
 
-- **Unverified code by design.** The implementation session skipped all
-  builds/tests. Expect compile errors and API mismatches; budget a fix-up pass
-  before running the matrix.
+- **The manual matrix is unverified.** Phases 0-3 wrote code without running it;
+  Phase 4 made gofmt/vet/build/test pass, but nobody has yet looked at the TUI,
+  run `stress-ng`, or checked the hardware detections. Treat the automated pass
+  as "it compiles and the unit tests agree with it", nothing more.
 - **Import cycles** from extracting tabs. Check `go list`/build first.
 - **Golden tests** can be brittle with lipgloss version differences; strip ANSI
   and assert size/content, not raw color codes.

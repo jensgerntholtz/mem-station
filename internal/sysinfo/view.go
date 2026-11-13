@@ -29,7 +29,7 @@ func (m *Model) View(w, h int) string {
 		return ""
 	}
 	if m.modal != modalNone {
-		return m.viewApplyModal(w, h)
+		return m.viewModal(w, h)
 	}
 	switch m.subView {
 	case subSPD:
@@ -124,7 +124,7 @@ func (m *Model) editorBody(width, height int) string {
 			lines = append(lines, editorLine{field: -1})
 		}
 		lines = append(lines, editorLine{
-			text:  ui.Truncate(style.SectionTitle.Render(string(g)), width, true),
+			text:  ui.Truncate(style.Section().Render(string(g)), width, true),
 			field: -1,
 		})
 		for _, i := range groupFields(g, m.fields) {
@@ -195,23 +195,22 @@ func (m *Model) fieldRow(i int, widths []int, issues []Issue, ctx ValidationCont
 
 func (m *Model) fieldLabelStyle(i int) lipgloss.Style {
 	if i != m.focus {
-		return style.Label
+		return style.FieldLabel()
 	}
 	if m.editing {
-		return style.EditingLabel
+		return style.EditingField()
 	}
-	return style.SelectedLabel
+	return style.SelectedField()
 }
 
 // detectedCell shows the hardware value, or "?" when detection has not
 // produced one. Unknown values are never rendered as a number.
 func (m *Model) detectedCell(f Field, width int) string {
-	th := style.ActiveTheme()
 	v, ok := m.detected[f.ID]
 	if !ok || strings.TrimSpace(v) == "" {
-		return lipgloss.NewStyle().Foreground(th.Dim).Render("?")
+		return style.Dim().Render("?")
 	}
-	return style.OriginalValue.Width(width).Render(ui.Truncate(formatValue(f, v), width, true))
+	return style.DetectedValue().Width(width).Render(ui.Truncate(formatValue(f, v), width, true))
 }
 
 // draftCell shows the editable value; the focused field renders the live text
@@ -224,7 +223,7 @@ func (m *Model) draftCell(i, width int) string {
 	th := style.ActiveTheme()
 	raw := strings.TrimSpace(m.draft[f.ID])
 	if raw == "" || raw == "?" {
-		return lipgloss.NewStyle().Foreground(th.Dim).Render("?")
+		return style.Dim().Render("?")
 	}
 	if i == m.focus {
 		return lipgloss.NewStyle().Bold(true).Foreground(th.Value).
@@ -236,7 +235,6 @@ func (m *Model) draftCell(i, width int) string {
 // marginCell shows the signed margin to the nearest safe bound, in the field's
 // unit. "?" means there is no known range to measure against yet.
 func (m *Model) marginCell(f Field, ctx ValidationContext, width int) string {
-	th := style.ActiveTheme()
 	if f.Bounds == nil {
 		return ""
 	}
@@ -246,22 +244,22 @@ func (m *Model) marginCell(f Field, ctx ValidationContext, width int) string {
 	}
 	v, ok := ctx.Float(f.ID)
 	if !ok {
-		return lipgloss.NewStyle().Foreground(th.Dim).Render("?")
+		return style.Dim().Render("?")
 	}
 	mg, ok := margin(b, v)
 	if !ok {
 		return ""
 	}
 	text := signedMargin(mg) + marginUnit(f)
-	st := lipgloss.NewStyle().Foreground(th.Success)
+	st := style.Success()
 	switch {
 	case b.HasMin && v < b.Min:
-		st = lipgloss.NewStyle().Foreground(th.Danger)
+		st = style.Danger()
 	case b.HasMax && v > b.Max:
 		if b.severityAbove() == SeverityDanger {
-			st = lipgloss.NewStyle().Foreground(th.Danger)
+			st = style.Danger()
 		} else {
-			st = lipgloss.NewStyle().Foreground(th.Warning)
+			st = style.Warning()
 		}
 	}
 	return st.Render(ui.Truncate(text, width, true))
@@ -270,7 +268,6 @@ func (m *Model) marginCell(f Field, ctx ValidationContext, width int) string {
 // safetyCell shows the worst validation finding for the field, or "ok" when the
 // value is inside its known range.
 func (m *Model) safetyCell(f Field, issues []Issue, ctx ValidationContext, width int) string {
-	th := style.ActiveTheme()
 	iss, ok := worstIssue(issues, f.ID)
 	if !ok {
 		if f.Bounds == nil {
@@ -279,17 +276,17 @@ func (m *Model) safetyCell(f Field, issues []Issue, ctx ValidationContext, width
 		if b := f.Bounds(ctx); !b.Known() {
 			return ""
 		}
-		return lipgloss.NewStyle().Foreground(th.Success).Render("ok")
+		return style.Success().Render(ui.MarkOK)
 	}
 	var styleFn lipgloss.Style
 	var symbol string
 	switch iss.Severity {
 	case SeverityDanger:
-		styleFn, symbol = lipgloss.NewStyle().Foreground(th.Danger), "x "
+		styleFn, symbol = style.Danger(), ui.MarkError+" "
 	case SeverityWarn:
-		styleFn, symbol = lipgloss.NewStyle().Foreground(th.Warning), "! "
+		styleFn, symbol = style.Warning(), ui.MarkWarn+" "
 	case SeverityInfo:
-		styleFn, symbol = lipgloss.NewStyle().Foreground(th.Dim), "? "
+		styleFn, symbol = style.Dim(), ui.MarkInfo+" "
 	default:
 		return ""
 	}
@@ -325,60 +322,59 @@ func (m *Model) editorHint(scrollable bool) string {
 	if scrollable {
 		text = "more fields - " + text
 	}
-	return style.Hint.Render(text)
+	return style.Muted().Render(text)
 }
 
 /* --------------- Guidance --------------- */
 
 func (m *Model) guideBody(width int) string {
-	th := style.ActiveTheme()
 	ctx := m.context()
 	issues := m.issues()
 
 	f := m.fields[m.focus]
 	lines := []string{
-		style.SectionTitle.Render("Perf Projection"),
+		style.Section().Render("Perf Projection"),
 	}
 	lines = append(lines, m.perfProjection()...)
 
-	lines = append(lines, "", style.SectionTitle.Render("Derived"))
+	lines = append(lines, "", style.Section().Render("Derived"))
 	lines = append(lines, m.derivedLines()...)
 
-	lines = append(lines, "", style.SectionTitle.Render(f.Label), style.Hint.Render(ui.Truncate(f.Desc, width, true)))
+	lines = append(lines, "", style.Section().Render(f.Label), style.Muted().Render(ui.Truncate(f.Desc, width, true)))
 	if f.Bounds != nil {
 		if label := f.Bounds(ctx).Label(); label != "" {
-			lines = append(lines, style.Hint.Render("safe: "+ui.Truncate(label, max(1, width-6), true)))
+			lines = append(lines, style.Muted().Render("safe: "+ui.Truncate(label, max(1, width-6), true)))
 		}
 	}
 
-	lines = append(lines, "", style.SectionTitle.Render("Safety"))
+	lines = append(lines, "", style.Section().Render("Safety"))
 	danger, warn, info := countIssues(issues)
 	lines = append(lines,
-		lipgloss.NewStyle().Foreground(th.Success).Render(fmt.Sprintf("ok     %d fields", len(m.fields)-danger-warn-info)),
-		lipgloss.NewStyle().Foreground(th.Dim).Render(fmt.Sprintf("? info %d", info)),
-		lipgloss.NewStyle().Foreground(th.Warning).Render(fmt.Sprintf("! warn %d", warn)),
-		lipgloss.NewStyle().Foreground(th.Danger).Render(fmt.Sprintf("x danger %d", danger)),
+		style.Success().Render(fmt.Sprintf("%s     %d fields", ui.MarkOK, len(m.fields)-danger-warn-info)),
+		style.Dim().Render(fmt.Sprintf("%s info %d", ui.MarkInfo, info)),
+		style.Warning().Render(fmt.Sprintf("%s warn %d", ui.MarkWarn, warn)),
+		style.Danger().Render(fmt.Sprintf("%s danger %d", ui.MarkError, danger)),
 	)
 
-	lines = append(lines, "", style.SectionTitle.Render("Detection"))
+	lines = append(lines, "", style.Section().Render("Detection"))
 	switch {
 	case m.Detected() && m.detectMsg != "":
-		lines = append(lines, style.Safe.Render("ok"), style.Hint.Render(ui.Truncate(m.detectMsg, width, true)))
+		lines = append(lines, style.OK().Render("ok"), style.Muted().Render(ui.Truncate(m.detectMsg, width, true)))
 	case m.detectMsg != "":
-		lines = append(lines, lipgloss.NewStyle().Foreground(th.Warning).Render("unavailable"),
-			style.Hint.Render(ui.Truncate(m.detectMsg, width, true)),
-			style.Hint.Render("R retries detection."))
+		lines = append(lines, style.Warning().Render("unavailable"),
+			style.Muted().Render(ui.Truncate(m.detectMsg, width, true)),
+			style.Muted().Render("R retries detection."))
 	default:
-		lines = append(lines, style.Hint.Render("waiting for detection..."))
+		lines = append(lines, style.Muted().Render("waiting for detection..."))
 	}
 	if m.imcNote != "" {
-		lines = append(lines, style.Hint.Render(ui.Truncate("IMC: "+m.imcNote, width, true)))
+		lines = append(lines, style.Muted().Render(ui.Truncate("IMC: "+m.imcNote, width, true)))
 	}
 
 	lines = append(lines,
 		"",
-		style.SectionTitle.Render("Views"),
-		style.Hint.Render("[ / ]  Timings - SPD - IMC"),
+		style.Section().Render("Views"),
+		style.Muted().Render("[ / ]  Timings - SPD - IMC"),
 	)
 	return strings.Join(lines, "\n")
 }
@@ -389,18 +385,18 @@ func (m *Model) perfProjection() []string {
 	freq, okFreq := parseNumber(m.draft[FieldFreq])
 	channels, okCh := parseNumber(m.draft[FieldChannels])
 	if !okFreq || !okCh || freq <= 0 || channels <= 0 {
-		return []string{style.MetricMuted.Render("Enter DRAM Freq and Channels to estimate bandwidth.")}
+		return []string{style.Muted().Render("Enter DRAM Freq and Channels to estimate bandwidth.")}
 	}
 
 	perChannel := freq * 8.0 / 1000.0 // GB/s per channel (MT/s * 8 bits / 8 / 1000)
 	total := perChannel * channels
 	rows := []string{
-		style.Metric.Render(fmt.Sprintf("Peak:      %.2f GB/s", total)),
-		style.MetricMuted.Render(fmt.Sprintf("Per chan:  %.2f GB/s", perChannel)),
-		style.MetricMuted.Render(fmt.Sprintf("Sustained: %.2f GB/s (82%% eff)", total*0.82)),
+		style.Metric().Render(fmt.Sprintf("Peak:      %.2f GB/s", total)),
+		style.Muted().Render(fmt.Sprintf("Per chan:  %.2f GB/s", perChannel)),
+		style.Muted().Render(fmt.Sprintf("Sustained: %.2f GB/s (82%% eff)", total*0.82)),
 	}
 	if cl, ok := parseNumber(m.draft[FieldCL]); ok && cl > 0 {
-		rows = append(rows, style.MetricMuted.Render(fmt.Sprintf("CAS:       %.2f ns", cyclesToNs(cl, freq))))
+		rows = append(rows, style.Muted().Render(fmt.Sprintf("CAS:       %.2f ns", cyclesToNs(cl, freq))))
 	}
 
 	// Compare against the applied profile so a regression is visible before it
@@ -419,16 +415,15 @@ func (m *Model) perfProjection() []string {
 
 // deltaLine renders the bandwidth delta against the applied profile.
 func deltaLine(delta, applied float64) string {
-	th := style.ActiveTheme()
 	pct := 0.0
 	if applied > 0 {
 		pct = delta / applied * 100
 	}
 	text := fmt.Sprintf("vs applied: %+.2f GB/s (%+.1f%%)", delta, pct)
 	if delta < 0 {
-		return lipgloss.NewStyle().Foreground(th.Warning).Render(text)
+		return style.Warning().Render(text)
 	}
-	return lipgloss.NewStyle().Foreground(th.Success).Render(text)
+	return style.Success().Render(text)
 }
 
 // derivedLines renders the derived timing metrics (row cycle and refresh
@@ -436,21 +431,21 @@ func deltaLine(delta, applied float64) string {
 func (m *Model) derivedLines() []string {
 	freq, ok := parseNumber(m.draft[FieldFreq])
 	if !ok || freq <= 0 {
-		return []string{style.MetricMuted.Render("Needs DRAM Freq to convert cycles to ns.")}
+		return []string{style.Muted().Render("Needs DRAM Freq to convert cycles to ns.")}
 	}
 	var out []string
 	if ras, ok := parseNumber(m.draft[FieldRAS]); ok {
 		if rp, ok := parseNumber(m.draft[FieldRP]); ok {
-			out = append(out, style.MetricMuted.Render(
+			out = append(out, style.Muted().Render(
 				fmt.Sprintf("tRC:  %.1f ns (tRAS+tRP)", cyclesToNs(ras+rp, freq))))
 		}
 	}
 	if rfc, ok := parseNumber(m.draft[FieldRFC]); ok {
-		out = append(out, style.MetricMuted.Render(
+		out = append(out, style.Muted().Render(
 			fmt.Sprintf("tRFC: %.1f ns (min 160 ns)", cyclesToNs(rfc, freq))))
 	}
 	if len(out) == 0 {
-		return []string{style.MetricMuted.Render("Needs tRAS/tRP/tRFC to derive row timings.")}
+		return []string{style.Muted().Render("Needs tRAS/tRP/tRFC to derive row timings.")}
 	}
 	return out
 }
@@ -472,8 +467,16 @@ func countIssues(issues []Issue) (danger, warn, info int) {
 
 /* --------------- Apply review modal --------------- */
 
-// viewApplyModal renders the review dialog centred in the body.
-func (m *Model) viewApplyModal(w, h int) string {
+// viewModal renders the open modal centred in the body.
+func (m *Model) viewModal(w, h int) string {
+	if m.modal == modalApply {
+		return m.viewApplyModal(w, h)
+	}
+	return m.viewPromptModal(w, h)
+}
+
+// modalWidth fits a dialog into the body width.
+func modalWidth(w int) int {
 	modalW := w - 8
 	if modalW > 64 {
 		modalW = 64
@@ -484,7 +487,32 @@ func (m *Model) viewApplyModal(w, h int) string {
 	if modalW < 20 {
 		modalW = 20
 	}
+	return modalW
+}
 
+// viewPromptModal renders a profile name/path prompt.
+func (m *Model) viewPromptModal(w, h int) string {
+	modalW := modalWidth(w)
+	innerW := modalW - 4
+	clip := func(s string) string { return ui.Truncate(s, innerW, true) }
+
+	m.prompt.Width = max(8, innerW-2)
+	body := []string{
+		style.Muted().Render(clip(m.promptHint)),
+		"",
+		m.prompt.View(),
+	}
+	if m.promptErr != "" {
+		body = append(body, "", style.Danger().Render(clip(m.promptErr)))
+	}
+	body = append(body, "", style.Muted().Render(clip("enter confirm - esc cancel")))
+	modal := ui.Modal(m.modal.Title(), body, modalW)
+	return ui.ClipLines(lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal), h)
+}
+
+// viewApplyModal renders the review dialog centred in the body.
+func (m *Model) viewApplyModal(w, h int) string {
+	modalW := modalWidth(w)
 	budget := h - 6 // borders, title, and padding
 	if budget < 3 {
 		budget = 3
@@ -504,7 +532,7 @@ func (m *Model) applyReviewLines(innerW int) []string {
 	clip := func(s string) string { return ui.Truncate(s, innerW, true) }
 
 	lines := []string{
-		lipgloss.NewStyle().Foreground(th.Muted).Render(clip("Review the differences, then confirm.")),
+		style.Muted().Render(clip("Review the differences, then confirm.")),
 		"",
 	}
 	changes := 0
@@ -516,10 +544,10 @@ func (m *Model) applyReviewLines(innerW int) []string {
 		}
 		changes++
 		line := fmt.Sprintf("%-14s %s -> %s", f.Label, formatValue(f, from), formatValue(f, to))
-		lines = append(lines, lipgloss.NewStyle().Foreground(th.Info).Render(clip(line)))
+		lines = append(lines, style.Info().Render(clip(line)))
 	}
 	if changes == 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(th.Dim).Render(clip("(no differences)")))
+		lines = append(lines, style.Dim().Render(clip("(no differences)")))
 	}
 
 	issues := m.issues()
@@ -532,26 +560,26 @@ func (m *Model) applyReviewLines(innerW int) []string {
 		if f, ok := LookupField(iss.FieldID); ok {
 			label = f.Label
 		}
-		symbol := "!"
-		st := lipgloss.NewStyle().Foreground(th.Warning)
+		symbol := ui.MarkWarn
+		st := style.Warning()
 		if iss.Severity == SeverityDanger {
-			symbol = "x"
-			st = lipgloss.NewStyle().Foreground(th.Danger)
+			symbol = ui.MarkError
+			st = style.Danger()
 		}
 		warnings = append(warnings, st.Render(clip(symbol+" "+label+": "+iss.Message)))
 	}
 	if len(warnings) > 0 {
-		lines = append(lines, "", style.SectionTitle.Render("Warnings"))
+		lines = append(lines, "", style.Section().Render("Warnings"))
 		lines = append(lines, warnings...)
 	}
 	if _, _, info := countIssues(issues); info > 0 {
-		lines = append(lines, lipgloss.NewStyle().Foreground(th.Dim).
+		lines = append(lines, style.Dim().
 			Render(clip(fmt.Sprintf("%d fields are still waiting for detection.", info))))
 	}
 
 	lines = append(lines, "",
 		lipgloss.NewStyle().Bold(true).Foreground(th.Warning).Render(clip("Profile only - not written to hardware")),
-		lipgloss.NewStyle().Foreground(th.Muted).Render(clip("enter confirm - esc cancel")),
+		style.Muted().Render(clip("enter confirm - esc cancel")),
 	)
 	return lines
 }

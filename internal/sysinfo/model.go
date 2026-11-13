@@ -50,7 +50,39 @@ type modalState int
 const (
 	modalNone modalState = iota
 	modalApply
+	modalSaveProfile
+	modalLoadProfile
+	modalExportProfile
+	modalImportProfile
 )
+
+// Title names the modal for the dialog and the help overlay.
+func (s modalState) Title() string {
+	switch s {
+	case modalApply:
+		return "Apply review"
+	case modalSaveProfile:
+		return "Save profile as"
+	case modalLoadProfile:
+		return "Load profile"
+	case modalExportProfile:
+		return "Export profile JSON"
+	case modalImportProfile:
+		return "Import profile JSON"
+	default:
+		return "Dialog"
+	}
+}
+
+// prompt reports whether the modal asks for a typed value instead of a yes/no
+// decision.
+func (s modalState) prompt() bool {
+	switch s {
+	case modalSaveProfile, modalLoadProfile, modalExportProfile, modalImportProfile:
+		return true
+	}
+	return false
+}
 
 // Model is the Timings tab.
 type Model struct {
@@ -77,6 +109,11 @@ type Model struct {
 	imcVP viewport.Model
 
 	modal modalState
+	// prompt is the text input of a profile-name/path modal; promptHint and
+	// promptErr explain what is expected and why the last confirm failed.
+	prompt     textinput.Model
+	promptHint string
+	promptErr  string
 
 	keys KeyMap
 }
@@ -100,12 +137,18 @@ func New() *Model {
 	in.CharLimit = 8
 	in.Width = draftColW - 1
 
+	prompt := textinput.New()
+	prompt.Prompt = "> "
+	prompt.CharLimit = 512
+	prompt.Width = 60
+
 	return &Model{
 		fields:     Fields(),
 		draft:      draft,
 		applied:    applied,
 		detected:   map[FieldID]string{},
 		input:      in,
+		prompt:     prompt,
 		lockRatios: true,
 		spdVP:      viewport.New(60, 10),
 		imcVP:      viewport.New(60, 10),
@@ -216,7 +259,7 @@ func (m *Model) Blur() { m.commitEdit() }
 
 // Stop closes any modal and cancels any running job (the Timings tab owns none).
 func (m *Model) Stop() {
-	m.modal = modalNone
+	m.closeModal()
 	m.commitEdit()
 }
 

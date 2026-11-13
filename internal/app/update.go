@@ -42,6 +42,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		return m, m.handleKey(msg)
 
+	case tea.MouseMsg:
+		return m, m.handleMouse(msg)
+
 	case detectResultMsg:
 		m.sys.SetDetected(msg.values, msg.msg, msg.spd)
 		m.syncSnapshot()
@@ -162,6 +165,46 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		m.syncSnapshot()
 	}
 	return cmd
+}
+
+// handleMouse maps wheel events to the active tab's page keys. Only wheel input
+// is used, so text selection and clicks keep working in the terminal. Mouse
+// support is off by default (--mouse enables it in the launcher).
+func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
+	if !m.opts.Mouse || m.tooSmall() {
+		return nil
+	}
+	ev := tea.MouseEvent(msg)
+	if ev.Action != tea.MouseActionPress {
+		return nil
+	}
+	up := false
+	switch ev.Button {
+	case tea.MouseButtonWheelUp:
+		up = true
+	case tea.MouseButtonWheelDown:
+	default:
+		return nil
+	}
+
+	if m.helpOpen {
+		if up {
+			m.helpOffset = max(0, m.helpOffset-3)
+		} else {
+			m.helpOffset += 3
+		}
+		return nil
+	}
+
+	active := m.tabs[m.active]
+	if active.Editing() || active.ModalOpen() {
+		return nil
+	}
+	key := tea.KeyMsg{Type: tea.KeyPgDown}
+	if up {
+		key = tea.KeyMsg{Type: tea.KeyPgUp}
+	}
+	return active.Update(key)
 }
 
 func (m *Model) retryDetection() tea.Cmd {

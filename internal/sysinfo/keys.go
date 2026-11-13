@@ -22,6 +22,13 @@ type KeyMap struct {
 	PrevView  key.Binding
 	ScrollUp  key.Binding
 	ScrollDn  key.Binding
+
+	// Profile keys: named profiles and JSON import/export. Importing and
+	// loading only ever change the draft; applying stays a separate confirm.
+	SaveProfile   key.Binding
+	LoadProfile   key.Binding
+	ExportProfile key.Binding
+	ImportProfile key.Binding
 }
 
 // DefaultKeyMap returns the Timings tab bindings.
@@ -40,6 +47,11 @@ func DefaultKeyMap() KeyMap {
 		PrevView:  key.NewBinding(key.WithKeys("["), key.WithHelp("[", "prev view")),
 		ScrollUp:  key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup", "scroll up")),
 		ScrollDn:  key.NewBinding(key.WithKeys("pgdown"), key.WithHelp("pgdown", "scroll down")),
+
+		SaveProfile:   key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "save profile")),
+		LoadProfile:   key.NewBinding(key.WithKeys("ctrl+l"), key.WithHelp("ctrl+l", "load profile")),
+		ExportProfile: key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "export JSON")),
+		ImportProfile: key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "import JSON")),
 	}
 }
 
@@ -67,9 +79,9 @@ func (m *Model) Help() []ui.HelpSection {
 	}}
 	if m.modal != modalNone {
 		return []ui.HelpSection{
-			{Title: "Apply review", Rows: []ui.KeyHint{
-				{Key: "enter", Action: "save the active profile"},
-				{Key: "esc", Action: "cancel the apply"},
+			{Title: m.modal.Title(), Rows: []ui.KeyHint{
+				{Key: "enter", Action: "confirm"},
+				{Key: "esc", Action: "cancel - nothing is changed"},
 			}},
 			global,
 		}
@@ -94,7 +106,10 @@ func (m *Model) Help() []ui.HelpSection {
 		{Key: "esc", Action: "revert the draft / cancel the review"},
 	}}
 	views := ui.HelpSection{Title: "Views", Rows: hints(m.keys.PrevView, m.keys.NextView, m.keys.ScrollUp, m.keys.ScrollDn)}
-	return []ui.HelpSection{tab, apply, views, global}
+	profiles := ui.HelpSection{Title: "Profiles", Rows: hints(
+		m.keys.SaveProfile, m.keys.LoadProfile, m.keys.ExportProfile, m.keys.ImportProfile,
+	)}
+	return []ui.HelpSection{tab, apply, views, profiles, global}
 }
 
 func hints(bindings ...key.Binding) []ui.KeyHint {

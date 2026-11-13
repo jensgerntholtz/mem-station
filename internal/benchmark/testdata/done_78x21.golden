@@ -1,7 +1,7 @@
 ╭────────────────────────────────────────────────────────────────────────────╮
 │ Benchmark                                                                  │
 │ Duration [ 30s ]  Buffer [256M]  Workers [1]                               │
-│     Enter - Run Again      30s / 30s  [#################]  done            │
+│     Enter - Run Again      30s / 30s  [#################]  ok done         │
 │ log: /var/lib/mem-station/logs/benchmark.log                               │
 │                                                                            │
 │ Results · 30s · 256M · 1 worker                                            │

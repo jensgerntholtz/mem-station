@@ -1,0 +1,40 @@
+  MemStation   0.2.0-dev  3200 MT/s · 16384 MB · F4-3200C16-16GVK                                                       
+   1 Timings    2 Benchmark    3 Burn-in                                                                                
+ ╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮ 
+ │ Global                                                                                                             │ 
+ │   f1/f2/f3  switch tabs (or 1/2/3)                                                                                 │ 
+ │   ?  toggle help                                                                                                   │ 
+ │   esc  close help                                                                                                  │ 
+ │   R  retry detection                                                                                               │ 
+ │   ctrl+c  cancel a running job, else quit                                                                          │ 
+ │   q  quit                                                                                                          │ 
+ │                                                                                                                    │ 
+ │ Timings                                                                                                            │ 
+ │   ↑/k  select                                                                                                      │ 
+ │   ↓/j  select                                                                                                      │ 
+ │   enter  edit                                                                                                      │ 
+ │   esc  cancel/reset                                                                                                │ 
+ │   tab  next field                                                                                                  │ 
+ │   shift+tab  prev field                                                                                            │ 
+ │   l  ratio lock                                                                                                    │ 
+ │   ctrl+s  apply profile                                                                                            │ 
+ │   ctrl+r  reset draft                                                                                              │ 
+ │                                                                                                                    │ 
+ │ Apply                                                                                                              │ 
+ │   ctrl+s  review the diff, then enter to save                                                                      │ 
+ │   esc  revert the draft / cancel the review                                                                        │ 
+ │                                                                                                                    │ 
+ │ Views                                                                                                              │ 
+ │   [  prev view                                                                                                     │ 
+ │   ]  next view                                                                                                     │ 
+ │   pgup  scroll up                                                                                                  │ 
+ │   pgdown  scroll down                                                                                              │ 
+ │                                                                                                                    │ 
+ │ Profiles                                                                                                           │ 
+ │   ctrl+p  save profile                                                                                             │ 
+ │   ctrl+l  load profile                                                                                             │ 
+ │   ctrl+e  export JSON                                                                                              │ 
+ │   ctrl+o  import JSON                                                                                              │ 
+ │ ↑/↓ scroll · esc close                                                                                             │ 
+ ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
+ Detected 2 channels at 3200 MT…↑/k select  enter edit  tab next field  l ratio lock  ctrl+s apply profile  ] next view 

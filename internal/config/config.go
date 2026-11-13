@@ -23,6 +23,22 @@ const (
 	KeyVoltage  = "dram_voltage"
 )
 
+// Keys lists every canonical configuration key, in display order. It is the
+// allow-list an imported profile is checked against.
+var Keys = []string{
+	KeyChannels, KeyRatio, KeyFreq, KeyCL, KeyRCD, KeyRP, KeyRAS, KeyCR, KeyRFC, KeyVoltage,
+}
+
+// IsKey reports whether k is a canonical configuration key.
+func IsKey(k string) bool {
+	for _, want := range Keys {
+		if k == want {
+			return true
+		}
+	}
+	return false
+}
+
 // Snapshot is an immutable-ish point-in-time copy of configuration values.
 type Snapshot struct {
 	Values     map[string]string `json:"values"` // raw display values

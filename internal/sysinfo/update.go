@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 
 	"mem-station/internal/config"
@@ -106,6 +107,14 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		m.scrollActive(-1)
 	case key.Matches(msg, m.keys.ScrollDn):
 		m.scrollActive(1)
+	case key.Matches(msg, m.keys.SaveProfile):
+		return m.openSaveProfile()
+	case key.Matches(msg, m.keys.LoadProfile):
+		return m.openLoadProfile()
+	case key.Matches(msg, m.keys.ExportProfile):
+		return m.openExportProfile()
+	case key.Matches(msg, m.keys.ImportProfile):
+		return m.openImportProfile()
 	}
 	return nil
 }
@@ -237,20 +246,213 @@ func (m *Model) openApply() tea.Cmd {
 	return nil
 }
 
-// updateModal routes keys while the apply review modal owns the input.
+// updateModal routes messages while a modal owns the input: the apply review
+// confirms on enter, the profile prompts additionally forward typing.
 func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if !ok {
+		if m.modal.prompt() {
+			var cmd tea.Cmd
+			m.prompt, cmd = m.prompt.Update(msg)
+			return cmd
+		}
 		return nil
 	}
+
+	if m.modal == modalApply {
+		switch keyMsg.String() {
+		case "enter":
+			return m.confirmApply()
+		case "esc", "q":
+			m.modal = modalNone
+			return message("Apply cancelled - nothing was saved.", ui.LevelInfo)
+		}
+		return nil
+	}
+
 	switch keyMsg.String() {
 	case "enter":
-		return m.confirmApply()
+		return m.confirmPrompt()
 	case "esc", "q":
-		m.modal = modalNone
-		return message("Apply cancelled - nothing was saved.", ui.LevelInfo)
+		title := m.modal.Title()
+		m.closeModal()
+		return message(title+" cancelled - nothing was changed.", ui.LevelInfo)
 	}
+	var cmd tea.Cmd
+	m.prompt, cmd = m.prompt.Update(keyMsg)
+	return cmd
+}
+
+// closeModal closes the open modal and drops any prompt error.
+func (m *Model) closeModal() {
+	m.modal = modalNone
+	m.promptErr = ""
+	m.promptHint = ""
+	m.prompt.Blur()
+}
+
+/* --------------- Profiles --------------- */
+
+// openSaveProfile prompts for a display name for the current draft.
+func (m *Model) openSaveProfile() tea.Cmd {
+	m.commitEdit()
+	m.openPrompt(modalSaveProfile, "", "name for the current draft, e.g. daily-3200")
 	return nil
+}
+
+// openLoadProfile prompts for the name of a saved profile. The hint lists what
+// is available so the tab can be driven without guessing.
+func (m *Model) openLoadProfile() tea.Cmd {
+	m.commitEdit()
+	names, err := store.ListProfiles()
+	hint := "name of a saved profile"
+	switch {
+	case err != nil:
+		hint = "profile list unavailable: " + err.Error()
+	case len(names) == 0:
+		hint = "no saved profiles yet - ctrl+p saves the draft"
+	default:
+		hint = "saved: " + strings.Join(names, ", ")
+	}
+	m.openPrompt(modalLoadProfile, "", hint)
+	return nil
+}
+
+// openExportProfile prompts for a destination path, prefilled with the default
+// export location inside the state dir.
+func (m *Model) openExportProfile() tea.Cmd {
+	m.commitEdit()
+	path, err := store.ExportPath("profile-" + time.Now().UTC().Format("20060102T150405"))
+	if err != nil {
+		path = ""
+	}
+	m.openPrompt(modalExportProfile, path, "file to write the active profile to")
+	return nil
+}
+
+// openImportProfile prompts for a profile JSON file to load into the draft.
+func (m *Model) openImportProfile() tea.Cmd {
+	m.commitEdit()
+	m.openPrompt(modalImportProfile, "", "path to a profile JSON file")
+	return nil
+}
+
+// openPrompt opens a text-prompt modal with a prefilled value.
+func (m *Model) openPrompt(state modalState, value, hint string) {
+	m.modal = state
+	m.promptErr = ""
+	m.promptHint = hint
+	m.prompt.SetValue(value)
+	m.prompt.CursorEnd()
+	m.prompt.Focus()
+}
+
+// confirmPrompt runs the prompt the user confirmed. A failure keeps the modal
+// open with the reason, so a typo never closes the dialog silently.
+func (m *Model) confirmPrompt() tea.Cmd {
+	value := strings.TrimSpace(m.prompt.Value())
+	if value == "" {
+		m.promptErr = "a value is required"
+		return nil
+	}
+	state := m.modal
+	m.promptErr = ""
+	var cmd tea.Cmd
+	switch state {
+	case modalSaveProfile:
+		cmd = m.saveNamedProfile(value)
+	case modalLoadProfile:
+		cmd = m.loadNamedProfile(value)
+	case modalExportProfile:
+		cmd = m.exportProfile(value)
+	case modalImportProfile:
+		cmd = m.importProfile(value)
+	default:
+		return nil
+	}
+	if m.promptErr != "" {
+		return nil
+	}
+	m.closeModal()
+	return cmd
+}
+
+// saveNamedProfile persists the draft under a display name. It never touches the
+// active profile: applying stays a separate, explicit step.
+func (m *Model) saveNamedProfile(name string) tea.Cmd {
+	profile := config.Profile{Name: name, Values: m.draftValues(), Source: "draft"}
+	if err := store.SaveNamedProfile(profile); err != nil {
+		m.promptErr = err.Error()
+		return nil
+	}
+	return message(fmt.Sprintf("Saved the draft as profile %q - ctrl+s applies it.", name), ui.LevelInfo)
+}
+
+// loadNamedProfile copies a saved profile into the draft.
+func (m *Model) loadNamedProfile(name string) tea.Cmd {
+	profile, ok, err := store.LoadNamedProfile(name)
+	if err != nil {
+		m.promptErr = err.Error()
+		return nil
+	}
+	if !ok {
+		m.promptErr = fmt.Sprintf("no profile named %q", name)
+		return nil
+	}
+	loaded := m.applyValuesToDraft(profile.Values)
+	return message(fmt.Sprintf("Loaded %d values from profile %q into the draft - ctrl+s applies them.", loaded, name), ui.LevelInfo)
+}
+
+// exportProfile writes the applied profile to a user-chosen path.
+func (m *Model) exportProfile(path string) tea.Cmd {
+	written, err := store.ExportFile(path, m.activeProfile())
+	if err != nil {
+		m.promptErr = err.Error()
+		return nil
+	}
+	return message("Profile only - not written to hardware. Exported the active profile to "+written, ui.LevelInfo)
+}
+
+// importProfile validates a profile JSON file and loads it into the draft.
+func (m *Model) importProfile(path string) tea.Cmd {
+	profile, err := store.ImportProfile(path)
+	if err != nil {
+		m.promptErr = err.Error()
+		return nil
+	}
+	loaded := m.applyValuesToDraft(profile.Values)
+	return message(fmt.Sprintf("Imported %d values from %s into the draft - ctrl+s applies them.", loaded, profile.Name), ui.LevelInfo)
+}
+
+// draftValues returns the draft in canonical-key form.
+func (m *Model) draftValues() map[string]string {
+	values := make(map[string]string, len(m.fields))
+	for _, f := range m.fields {
+		values[f.Key] = m.draft[f.ID]
+	}
+	return values
+}
+
+// applyValuesToDraft copies known canonical keys into the draft and reports how
+// many fields changed.
+func (m *Model) applyValuesToDraft(values map[string]string) int {
+	changed := 0
+	for _, f := range m.fields {
+		v := strings.TrimSpace(values[f.Key])
+		if v == "" || m.draft[f.ID] == v {
+			continue
+		}
+		m.draft[f.ID] = v
+		changed++
+	}
+	return changed
+}
+
+// activeProfile builds the profile form of what the run tabs are attributed to:
+// the applied profile, else the detected values.
+func (m *Model) activeProfile() config.Profile {
+	snap := m.Snapshot()
+	return config.Profile{Name: "active", Values: snap.Values, Source: snap.Source}
 }
 
 // confirmApply persists the draft as the active profile. Hardware writes are

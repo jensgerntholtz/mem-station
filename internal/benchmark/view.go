@@ -66,12 +66,11 @@ func (m *Model) View(w, h int) string {
 
 // logView renders the live output viewport with its follow marker.
 func (m *Model) logView() string {
-	th := style.ActiveTheme()
 	follow := "follow: off"
 	if m.follow {
 		follow = "follow: on"
 	}
-	title := lipgloss.NewStyle().Foreground(th.Muted).Render("Live log (" + follow + ")")
+	title := style.Muted().Render("Live log (" + follow + ")")
 	return title + "\n" + m.vp.View()
 }
 
@@ -81,11 +80,11 @@ func (m *Model) controls(w int) []string {
 	var button string
 	switch {
 	case m.Running():
-		button = style.RunningBtn.Render(" Running ")
+		button = style.RunningButton().Render(" Running ")
 	case m.state == runner.StateIdle:
-		button = style.RunBtn.Render(" Enter - Run Benchmark ")
+		button = style.RunButton().Render(" Enter - Run Benchmark ")
 	default:
-		button = style.RunBtn.Render(" Enter - Run Again ")
+		button = style.RunButton().Render(" Enter - Run Again ")
 	}
 
 	elapsed := ui.DurationLabel(m.elapsed())
@@ -100,12 +99,12 @@ func (m *Model) controls(w int) []string {
 	}
 	lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Top,
 		button, "  ",
-		style.Hint.Render(elapsed+" / "+total), "  ",
+		style.Muted().Render(elapsed+" / "+total), "  ",
 		lipgloss.NewStyle().Foreground(style.ActiveTheme().Accent).Render(bar), "  ",
 		state,
 	))
 	if m.logPath != "" {
-		lines = append(lines, style.Hint.Render("log: "+m.logPath))
+		lines = append(lines, style.Muted().Render("log: "+m.logPath))
 	}
 	if m.historyErr != "" {
 		lines = append(lines, lipgloss.NewStyle().Foreground(style.ActiveTheme().Warning).Render(m.historyErr))
@@ -117,7 +116,7 @@ func (m *Model) controls(w int) []string {
 func (m *Model) configLine() string {
 	th := style.ActiveTheme()
 	field := func(label, value string, selected bool) string {
-		l := style.Hint.Render(label + " ")
+		l := style.Muted().Render(label + " ")
 		if selected {
 			return l + lipgloss.NewStyle().Bold(true).Foreground(th.Accent).Render("[ "+value+" ]")
 		}
@@ -138,29 +137,27 @@ func (m *Model) configLine() string {
 }
 
 func (m *Model) stateLabel() string {
-	th := style.ActiveTheme()
 	switch m.state {
 	case runner.StateRunning:
-		return lipgloss.NewStyle().Foreground(th.Warning).Render("running")
+		return style.Warning().Render("running")
 	case runner.StateDone:
-		return lipgloss.NewStyle().Foreground(th.Success).Render("done")
+		return style.Success().Render(ui.MarkOK + " done")
 	case runner.StateFailed:
-		return lipgloss.NewStyle().Foreground(th.Danger).Render("failed (exit " + fmt.Sprint(m.exitCode) + ")")
+		return style.Danger().Render(ui.MarkError + " failed (exit " + fmt.Sprint(m.exitCode) + ")")
 	case runner.StateCancelled:
-		return lipgloss.NewStyle().Foreground(th.Danger).Render("cancelled")
+		return style.Danger().Render(ui.MarkWarn + " cancelled")
 	default:
-		return lipgloss.NewStyle().Foreground(th.Muted).Render("idle")
+		return style.Muted().Render("idle")
 	}
 }
 
 // resultLines renders the parsed result table (last vs previous run) or the
 // failure reason. It returns nil when there is nothing to show.
 func (m *Model) resultLines(w int) []string {
-	th := style.ActiveTheme()
 	if m.startedAt.IsZero() || m.Running() {
 		return nil
 	}
-	if m.results == nil || !payloadOf(m.runOptions, m.results).Parsed {
+	if m.results == nil || !NewPayload(m.runOptions, m.results).Parsed {
 		msg := m.errText
 		if msg == "" {
 			msg = m.parseMsg
@@ -168,9 +165,9 @@ func (m *Model) resultLines(w int) []string {
 		if msg == "" {
 			return nil
 		}
-		st := lipgloss.NewStyle().Foreground(th.Danger)
+		st := style.Danger()
 		if m.state == runner.StateCancelled {
-			st = lipgloss.NewStyle().Foreground(th.Warning)
+			st = style.Warning()
 		}
 		return []string{st.Render("error: " + ui.Truncate(msg, max(8, w-8), true))}
 	}
@@ -179,7 +176,7 @@ func (m *Model) resultLines(w int) []string {
 	prev, hasPrev := m.previous(opts.Signature(), m.lastID)
 	peak := m.snapshot.PeakMBs()
 
-	header := style.ColHeader.Render
+	header := style.ColumnHeader().Render
 	rows := [][]string{{
 		header("Metric"), header("Last"), header("Prev"), header("Delta"), header("Peak"), header("Eff"),
 	}}
@@ -199,7 +196,7 @@ func (m *Model) resultLines(w int) []string {
 		rows = append(rows, resultRow(mt.Label, mt.Value, prevVal, hasPrev, peak))
 	}
 
-	out := []string{style.SectionTitle.Render("Results · " + opts.Label())}
+	out := []string{style.Section().Render("Results · " + opts.Label())}
 	out = append(out, strings.Split(ui.JoinColumns(rows, resultColumnWidths), "\n")...)
 	return out
 }
@@ -208,15 +205,15 @@ func (m *Model) resultLines(w int) []string {
 // theoretical peak.
 func resultRow(label string, last, prev float64, hasPrev bool, peak float64) []string {
 	th := style.ActiveTheme()
-	muted := lipgloss.NewStyle().Foreground(th.Muted).Render
+	muted := style.Muted().Render
 	prevStr := "-"
 	deltaStr := "-"
 	if hasPrev && prev > 0 {
 		prevStr = fmt.Sprintf("%.0f", prev)
 		delta := (last - prev) / prev * 100
-		st := lipgloss.NewStyle().Foreground(th.Success)
+		st := style.Success()
 		if delta < 0 {
-			st = lipgloss.NewStyle().Foreground(th.Danger)
+			st = style.Danger()
 		}
 		deltaStr = st.Render(fmt.Sprintf("%+.1f%%", delta))
 	}
@@ -241,11 +238,11 @@ func (m *Model) historyLines(w int) []string {
 	}
 	th := style.ActiveTheme()
 	rows := [][]string{{
-		style.ColHeader.Render("When"),
-		style.ColHeader.Render("Read"),
-		style.ColHeader.Render("Write"),
-		style.ColHeader.Render("Dur"),
-		style.ColHeader.Render("Config"),
+		style.ColumnHeader().Render("When"),
+		style.ColumnHeader().Render("Read"),
+		style.ColumnHeader().Render("Write"),
+		style.ColumnHeader().Render("Dur"),
+		style.ColumnHeader().Render("Config"),
 	}}
 	shown := 0
 	for _, rec := range m.runs {
@@ -260,14 +257,14 @@ func (m *Model) historyLines(w int) []string {
 		}
 		dur := ui.DurationLabel(time.Duration(rec.Record.DurationMS) * time.Millisecond)
 		rows = append(rows, []string{
-			lipgloss.NewStyle().Foreground(th.Muted).Render(rec.Record.StartedAt.Local().Format("01-02 15:04")),
+			style.Muted().Render(rec.Record.StartedAt.Local().Format("01-02 15:04")),
 			lipgloss.NewStyle().Foreground(th.Value).Render(read),
 			lipgloss.NewStyle().Foreground(th.Value).Render(write),
-			lipgloss.NewStyle().Foreground(th.Muted).Render(dur),
+			style.Muted().Render(dur),
 			lipgloss.NewStyle().Foreground(th.Label).Render(rec.Result.optionsFor().Label()),
 		})
 	}
-	out := []string{style.SectionTitle.Render(fmt.Sprintf("History (last %d, newest first)", len(m.runs)))}
+	out := []string{style.Section().Render(fmt.Sprintf("History (last %d, newest first)", len(m.runs)))}
 	out = append(out, strings.Split(ui.JoinColumns(rows, historyColumnWidths), "\n")...)
 	return out
 }

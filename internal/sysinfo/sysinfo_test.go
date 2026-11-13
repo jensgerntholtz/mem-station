@@ -1,6 +1,8 @@
 package sysinfo
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -506,5 +508,160 @@ func TestSubViewScrollRetained(t *testing.T) {
 	m.View(78, 21)
 	if got := m.spdVP.YOffset; got != scrolled {
 		t.Errorf("scroll offset changed on re-render: %d, want %d", got, scrolled)
+	}
+}
+
+/* --------------- Profiles and JSON import/export --------------- */
+
+// promptModel runs a profile key and returns the tab with its prompt modal
+// open, typing value into the prompt the way a user would.
+func promptModel(t *testing.T, m *Model, key tea.KeyMsg, value string) {
+	t.Helper()
+	m.Update(key)
+	if !m.ModalOpen() || !m.modal.prompt() {
+		t.Fatalf("%v did not open a prompt modal", key)
+	}
+	m.prompt.SetValue("") // prompts may be prefilled; the test types its own value
+	for _, r := range value {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+}
+
+// TestSaveNamedProfileFromDraft saves the draft under a name without touching
+// the active profile.
+func TestSaveNamedProfileFromDraft(t *testing.T) {
+	m := detectedModel(t)
+	setDraft(m, FieldChannels, "4")
+	promptModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlP}, "daily")
+	if cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+		t.Fatal("confirming the save produced no status message")
+	}
+	if m.ModalOpen() {
+		t.Error("the modal stayed open after a successful save")
+	}
+	saved, ok, err := store.LoadNamedProfile("daily")
+	if err != nil || !ok {
+		t.Fatalf("LoadNamedProfile(daily) = %v, %v", ok, err)
+	}
+	if got := saved.Values[config.KeyChannels]; got != "4" {
+		t.Errorf("saved channels = %q, want the draft value 4", got)
+	}
+	if !m.Dirty() {
+		t.Error("saving a named profile applied the draft to the active profile")
+	}
+}
+
+// TestLoadNamedProfileIntoDraft loads a saved profile into the draft only.
+func TestLoadNamedProfileIntoDraft(t *testing.T) {
+	m := detectedModel(t)
+	if err := store.SaveNamedProfile(config.Profile{
+		Name:   "undervolt",
+		Values: map[string]string{config.KeyFreq: "2933", config.KeyVoltage: "1.20"},
+	}); err != nil {
+		t.Fatalf("SaveNamedProfile: %v", err)
+	}
+
+	promptModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlL}, "undervolt")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	if got := m.draft[FieldFreq]; got != "2933" {
+		t.Errorf("draft frequency = %q, want 2933", got)
+	}
+	if !m.Dirty() {
+		t.Error("a loaded profile did not mark the draft dirty")
+	}
+	if _, ok := m.applied[FieldFreq]; ok {
+		t.Error("loading a named profile changed the applied profile")
+	}
+}
+
+// TestImportProfileValidation keeps the modal open and the draft untouched when
+// the file is invalid, then loads a valid profile.
+func TestImportProfileValidation(t *testing.T) {
+	m := detectedModel(t)
+	dir := t.TempDir()
+
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte(`{"name":"bad","values":{"not_a_key":"1"}}`), 0o600); err != nil {
+		t.Fatalf("write bad profile: %v", err)
+	}
+	promptModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlO}, bad)
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.ModalOpen() {
+		t.Fatal("an invalid import closed the modal")
+	}
+	if m.promptErr == "" {
+		t.Error("an invalid import did not explain the failure")
+	}
+	if m.Dirty() {
+		t.Error("an invalid import changed the draft")
+	}
+
+	good := filepath.Join(dir, "good.json")
+	if err := os.WriteFile(good, []byte(`{"name":"good","values":{"tCL":"18","tRCD":"20"}}`), 0o600); err != nil {
+		t.Fatalf("write good profile: %v", err)
+	}
+	m.prompt.SetValue(good)
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.ModalOpen() {
+		t.Error("a valid import did not close the modal")
+	}
+	if got := m.draft[FieldCL]; got != "18" {
+		t.Errorf("imported tCL = %q, want 18", got)
+	}
+	if got := m.draft[FieldRCD]; got != "20" {
+		t.Errorf("imported tRCD = %q, want 20", got)
+	}
+}
+
+// TestExportProfileToPath writes the active profile to a user-chosen path and
+// verifies it round-trips through the validated importer.
+func TestExportProfileToPath(t *testing.T) {
+	m := detectedModel(t)
+	path := filepath.Join(t.TempDir(), "nested", "profile.json")
+
+	promptModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlE}, path)
+	if cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+		t.Fatal("exporting produced no status message")
+	}
+	if m.ModalOpen() {
+		t.Error("the export modal stayed open after a successful write")
+	}
+	profile, err := store.ImportProfile(path)
+	if err != nil {
+		t.Fatalf("ImportProfile(%s): %v", path, err)
+	}
+	if got := profile.Values[config.KeyFreq]; got != "3200" {
+		t.Errorf("exported frequency = %q, want the detected 3200", got)
+	}
+	if profile.Source != "detected" {
+		t.Errorf("exported source = %q, want detected", profile.Source)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat export: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("export mode = %o, want 600", perm)
+	}
+}
+
+// TestProfilePromptEmptyValue checks an empty prompt is rejected with a reason
+// instead of silently closing.
+func TestProfilePromptEmptyValue(t *testing.T) {
+	m := detectedModel(t)
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.ModalOpen() {
+		t.Fatal("an empty prompt closed the modal")
+	}
+	if !strings.Contains(m.promptErr, "required") {
+		t.Errorf("prompt error = %q, want a required-value message", m.promptErr)
+	}
+	// esc always closes and leaves the draft alone.
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.ModalOpen() {
+		t.Error("esc did not close the prompt")
 	}
 }

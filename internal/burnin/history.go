@@ -15,9 +15,9 @@ import (
 
 // Verdict values persisted with a run.
 const (
-	verdictPassed    = "passed"
-	verdictFailed    = "failed"
-	verdictCancelled = "cancelled"
+	VerdictPassed    = "passed"
+	VerdictFailed    = "failed"
+	VerdictCancelled = "cancelled"
 )
 
 // Payload is the stable JSON schema of a burn-in result.
@@ -59,27 +59,33 @@ func decodePayload(raw json.RawMessage) Payload {
 	return p
 }
 
+// NewPayload builds the stored payload of one run. The headless `burnin`
+// command shares it so TUI history and CLI JSON never drift.
+func NewPayload(opts Options, presetName, verdict string, errors int, stoppedOnError bool, parsedDuration string) Payload {
+	return Payload{
+		Options:        opts.payload(presetName),
+		Verdict:        verdict,
+		Success:        verdict == VerdictPassed,
+		Errors:         errors,
+		ParsedDuration: parsedDuration,
+		StoppedOnError: stoppedOnError,
+	}
+}
+
 // payloadOf converts the finished run into the stored schema.
 func (m *Model) payloadOf() Payload {
-	p := Payload{
-		Options:        m.runOptions.payload(m.runPreset.ShortName()),
-		Errors:         m.errors,
-		StoppedOnError: m.stoppedOnErr,
-		Success:        m.state == runner.StateDone,
-		Verdict:        verdictPassed,
-	}
-	if m.results != nil {
-		p.ParsedDuration = m.results.Duration
-	}
+	verdict := VerdictFailed
 	switch m.state {
 	case runner.StateDone:
-		p.Verdict = verdictPassed
+		verdict = VerdictPassed
 	case runner.StateCancelled:
-		p.Verdict = verdictCancelled
-	default:
-		p.Verdict = verdictFailed
+		verdict = VerdictCancelled
 	}
-	return p
+	parsed := ""
+	if m.results != nil {
+		parsed = m.results.Duration
+	}
+	return NewPayload(m.runOptions, m.runPreset.ShortName(), verdict, m.errors, m.stoppedOnErr, parsed)
 }
 
 // recordFor builds the history record for the finished run.

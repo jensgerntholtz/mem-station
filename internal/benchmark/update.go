@@ -201,7 +201,7 @@ func (m *Model) finish(ev runner.Event) tea.Cmd {
 		m.state = runner.StateDone
 	}
 
-	payload := payloadOf(m.runOptions, m.results)
+	payload := NewPayload(m.runOptions, m.results)
 	m.appendHistory(payload)
 
 	switch m.state {

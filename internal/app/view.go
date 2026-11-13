@@ -46,20 +46,20 @@ func (m *Model) renderHeader(f frame) string {
 		Background(th.TabActiveBg).
 		Padding(0, 1).
 		Render("MemStation")
-	version := lipgloss.NewStyle().Foreground(th.Muted).Render(m.opts.Version)
+	version := style.Muted().Render(m.opts.Version)
 
 	segments := []string{title, version}
 
 	if s := m.sys.Summary(); s != "" {
-		segments = append(segments, lipgloss.NewStyle().Foreground(th.Info).Render(s))
+		segments = append(segments, style.Info().Render(s))
 	}
 	if m.sys.Dirty() {
-		segments = append(segments, lipgloss.NewStyle().Foreground(th.Warning).Render("* unsaved changes"))
+		segments = append(segments, style.Warning().Render("* unsaved changes"))
 	}
 	for _, t := range m.tabs {
 		if t.Running() {
 			label := "* " + strings.ToLower(t.Title()) + " running"
-			segments = append(segments, lipgloss.NewStyle().Foreground(th.Success).Render(label))
+			segments = append(segments, style.Success().Render(label))
 		}
 	}
 
@@ -78,9 +78,9 @@ func (m *Model) renderTabBar(f frame) string {
 			label += " ~"
 		}
 		if i == m.active {
-			tabs = append(tabs, style.ActiveTab.Render(label))
+			tabs = append(tabs, style.TabActive().Render(label))
 		} else {
-			tabs = append(tabs, style.InactiveTab.Render(label))
+			tabs = append(tabs, style.TabInactive().Render(label))
 		}
 	}
 	line := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
@@ -95,10 +95,10 @@ func (m *Model) tooSmallView() string {
 	message := lipgloss.JoinVertical(lipgloss.Center,
 		lipgloss.NewStyle().Bold(true).Foreground(th.Accent).Render("MemStation"),
 		"",
-		lipgloss.NewStyle().Foreground(th.Warning).Render(fmt.Sprintf("Terminal too small: %dx%d", w, h)),
-		lipgloss.NewStyle().Foreground(th.Muted).Render(fmt.Sprintf("Minimum size is %dx%d", minWidth, minHeight)),
+		style.Warning().Render(fmt.Sprintf("Terminal too small: %dx%d", w, h)),
+		style.Muted().Render(fmt.Sprintf("Minimum size is %dx%d", minWidth, minHeight)),
 		"",
-		lipgloss.NewStyle().Foreground(th.Dim).Render("Resize the window, or press q to quit."),
+		style.Dim().Render("Resize the window, or press q to quit."),
 	)
 	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, message)
 }

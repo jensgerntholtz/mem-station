@@ -48,8 +48,9 @@ type runRecord struct {
 	Result Payload
 }
 
-// payloadOf converts the parsed results of one run into the stored schema.
-func payloadOf(opts Options, results *bench.BenchResults) Payload {
+// NewPayload converts the parsed results of one run into the stored schema. The
+// headless `bench` command shares it so TUI history and CLI JSON never drift.
+func NewPayload(opts Options, results *bench.BenchResults) Payload {
 	p := Payload{Options: opts.payload()}
 	if results == nil {
 		return p

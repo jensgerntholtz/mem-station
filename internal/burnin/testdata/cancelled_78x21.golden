@@ -1,7 +1,7 @@
 ╭────────────────────────────────────────────────────────────────────────────╮
 │ Burn-in                                                                    │
 │ Preset [ memory-heavy (embedded) ]  Duration [30m]  Stop on error [on]     │
-│     Enter - Run Again      1m / 30m  [#----------------]  cancelled        │
+│     Enter - Run Again      1m / 30m  [#----------------]  ! cancelled      │
 │                                                                            │
 │ Result · cancelled                                                         │
 │ Verdict CANCELLED   Elapsed 1m   Errors 0   Exit 0                         │

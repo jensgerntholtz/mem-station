@@ -210,15 +210,38 @@ func RecentHistory(kind runner.Kind, n int) ([]Record, error) {
 // returns the absolute path. Writes are atomic so an export never leaves a
 // partial file behind.
 func ExportJSON(name string, v any) (string, error) {
-	data, err := json.MarshalIndent(v, "", "  ")
+	path, err := ExportPath(name)
 	if err != nil {
 		return "", err
 	}
+	return ExportFile(path, v)
+}
+
+// ExportPath returns the absolute path an export with the given name writes to.
+// It lets a caller prefill a "save as" prompt with the default location.
+func ExportPath(name string) (string, error) {
 	dir, err := Dir()
 	if err != nil {
 		return "", err
 	}
 	path := filepath.Join(dir, "exports", sanitizeName(name)+".json")
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs, nil
+	}
+	return path, nil
+}
+
+// ExportFile writes v as indented JSON to an arbitrary path, creating parent
+// directories. The write is atomic and the file is private (0600): a user-chosen
+// destination never inherits umask-dependent permissions.
+func ExportFile(path string, v any) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", fmt.Errorf("export path is required")
+	}
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return "", err
+	}
 	if err := writeFileAtomic(path, append(data, '\n'), 0600); err != nil {
 		return "", err
 	}
@@ -226,6 +249,33 @@ func ExportJSON(name string, v any) (string, error) {
 		return abs, nil
 	}
 	return path, nil
+}
+
+// ImportProfile reads a profile from an arbitrary path and validates it before
+// it can be loaded into the editor: the file must parse, contain at least one
+// value, and use only canonical configuration keys. The profile name falls back
+// to the file name so an export can be re-imported unchanged.
+func ImportProfile(path string) (config.Profile, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return config.Profile{}, err
+	}
+	var p config.Profile
+	if err := json.Unmarshal(data, &p); err != nil {
+		return config.Profile{}, fmt.Errorf("parse profile %s: %w", path, err)
+	}
+	if len(p.Values) == 0 {
+		return config.Profile{}, fmt.Errorf("profile %s has no values", path)
+	}
+	for k := range p.Values {
+		if !config.IsKey(k) {
+			return config.Profile{}, fmt.Errorf("profile %s has unknown key %q", path, k)
+		}
+	}
+	if strings.TrimSpace(p.Name) == "" {
+		p.Name = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	}
+	return p, nil
 }
 
 // MaterializeJob writes a copy of preset into the state dir with its timeout

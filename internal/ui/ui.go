@@ -38,6 +38,28 @@ func Status(text string, level Level) tea.Cmd {
 	}
 }
 
+// Severity markers used next to values and run verdicts. Every severity cue
+// pairs a marker with text, so state is never conveyed by color alone (and
+// stays legible with NO_COLOR).
+const (
+	MarkOK    = "ok"
+	MarkInfo  = "?"
+	MarkWarn  = "!"
+	MarkError = "x"
+)
+
+// SeverityMark returns the marker for a status level.
+func SeverityMark(l Level) string {
+	switch l {
+	case LevelWarn:
+		return MarkWarn
+	case LevelError:
+		return MarkError
+	default:
+		return MarkInfo
+	}
+}
+
 // KeyHint describes one key binding for footers and the help overlay.
 type KeyHint struct {
 	Key    string
@@ -135,7 +157,7 @@ func Panel(title string, width, height int, focused bool, body string) string {
 
 	content := clipBlock(body, innerW, contentH)
 	if title != "" {
-		titleLine := lipgloss.NewStyle().Bold(true).Foreground(th.Accent).Render(Truncate(title, innerW, true))
+		titleLine := style.Section().Render(Truncate(title, innerW, true))
 		content = titleLine + "\n" + content
 	}
 
@@ -185,6 +207,11 @@ func Footer(status string, level Level, hints []KeyHint, width int) string {
 		hints = hints[:len(hints)-1]
 	}
 
+	// Warn/error statuses carry a marker so the level is not color-only.
+	if level != LevelInfo {
+		status = SeverityMark(level) + " " + status
+	}
+
 	right := renderHints(hints)
 	rightW := lipgloss.Width(right)
 	if rightW > width {
@@ -201,11 +228,10 @@ func renderHints(hints []KeyHint) string {
 	if len(hints) == 0 {
 		return ""
 	}
-	th := style.ActiveTheme()
 	parts := make([]string, 0, len(hints))
 	for _, h := range hints {
-		key := lipgloss.NewStyle().Foreground(th.Accent).Render(h.Key)
-		action := lipgloss.NewStyle().Foreground(th.Muted).Render(h.Action)
+		key := style.Accent().Render(h.Key)
+		action := style.Muted().Render(h.Action)
 		parts = append(parts, key+" "+action)
 	}
 	return strings.Join(parts, "  ")
@@ -228,10 +254,10 @@ func HelpOverlayAt(width, height int, sections []HelpSection, offset int) string
 
 	var lines []string
 	for _, sec := range sections {
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(th.Accent).Render(sec.Title))
+		lines = append(lines, style.Section().Render(sec.Title))
 		for _, row := range sec.Rows {
-			key := lipgloss.NewStyle().Foreground(th.Accent).Render(row.Key)
-			action := lipgloss.NewStyle().Foreground(th.Muted).Render(row.Action)
+			key := style.Accent().Render(row.Key)
+			action := style.Muted().Render(row.Action)
 			lines = append(lines, "  "+key+"  "+action)
 		}
 		lines = append(lines, "")
@@ -254,7 +280,7 @@ func HelpOverlayAt(width, height int, sections []HelpSection, offset int) string
 	}
 	// The footer occupies the last content line.
 	body := clipBlock(strings.Join(lines[offset:], "\n"), innerW, max(1, innerH-1))
-	footer := lipgloss.NewStyle().Foreground(th.Dim).Render("↑/↓ scroll · esc close")
+	footer := style.Dim().Render("↑/↓ scroll · esc close")
 
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -271,7 +297,7 @@ func Modal(title string, body []string, width int) string {
 	if width < 4 {
 		width = 4
 	}
-	lines := []string{lipgloss.NewStyle().Bold(true).Foreground(th.Accent).Render(title), ""}
+	lines := []string{style.Section().Render(title), ""}
 	lines = append(lines, body...)
 	border := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

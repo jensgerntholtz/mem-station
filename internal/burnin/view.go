@@ -60,7 +60,6 @@ func (m *Model) View(w, h int) string {
 
 // logView renders the live output viewport with its follow/filter markers.
 func (m *Model) logView() string {
-	th := style.ActiveTheme()
 	filter := "filter: all"
 	if m.errorsOnly {
 		filter = "filter: errors"
@@ -69,22 +68,21 @@ func (m *Model) logView() string {
 	if m.follow {
 		follow = "follow: on"
 	}
-	title := lipgloss.NewStyle().Foreground(th.Muted).Render("Live log (" + follow + ", " + filter + ")")
+	title := style.Muted().Render("Live log (" + follow + ", " + filter + ")")
 	return title + "\n" + m.vp.View()
 }
 
 func (m *Model) controls(w int) []string {
-	th := style.ActiveTheme()
 	lines := []string{m.configLine()}
 
 	var button string
 	switch {
 	case m.Running():
-		button = style.RunningBtn.Render(" Running ")
+		button = style.RunningButton().Render(" Running ")
 	case m.state == runner.StateIdle:
-		button = style.RunBtn.Render(" Enter - Run Burn-in ")
+		button = style.RunButton().Render(" Enter - Run Burn-in ")
 	default:
-		button = style.RunBtn.Render(" Enter - Run Again ")
+		button = style.RunButton().Render(" Enter - Run Again ")
 	}
 
 	elapsed := ui.DurationLabel(m.elapsed())
@@ -99,8 +97,8 @@ func (m *Model) controls(w int) []string {
 	}
 	lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Top,
 		button, "  ",
-		style.Hint.Render(elapsed+" / "+total), "  ",
-		lipgloss.NewStyle().Foreground(th.Accent).Render(bar), "  ",
+		style.Muted().Render(elapsed+" / "+total), "  ",
+		style.Accent().Render(bar), "  ",
 		state,
 	))
 
@@ -108,16 +106,16 @@ func (m *Model) controls(w int) []string {
 		lines = append(lines, m.errorBanner())
 	}
 	if m.jobPath != "" && m.Running() {
-		lines = append(lines, style.Hint.Render("job: "+m.jobPath))
+		lines = append(lines, style.Muted().Render("job: "+m.jobPath))
 	}
 	if m.logPath != "" && m.Running() {
-		lines = append(lines, style.Hint.Render("log: "+m.logPath))
+		lines = append(lines, style.Muted().Render("log: "+m.logPath))
 	}
 	if m.presetWarn != "" {
-		lines = append(lines, lipgloss.NewStyle().Foreground(th.Warning).Render(m.presetWarn))
+		lines = append(lines, style.Warning().Render(m.presetWarn))
 	}
 	if m.historyErr != "" {
-		lines = append(lines, lipgloss.NewStyle().Foreground(th.Warning).Render(m.historyErr))
+		lines = append(lines, style.Warning().Render(m.historyErr))
 	}
 	return lines
 }
@@ -125,7 +123,7 @@ func (m *Model) controls(w int) []string {
 // errorBanner is the prominent error line shown as soon as errors appear.
 func (m *Model) errorBanner() string {
 	th := style.ActiveTheme()
-	text := fmt.Sprintf("!! %d error line(s)", m.errors)
+	text := fmt.Sprintf("%s %d error line(s)", ui.MarkError, m.errors)
 	if m.firstError != "" {
 		text += " · first: " + m.firstError
 	}
@@ -136,7 +134,7 @@ func (m *Model) errorBanner() string {
 func (m *Model) configLine() string {
 	th := style.ActiveTheme()
 	field := func(label, value string, selected bool) string {
-		l := style.Hint.Render(label + " ")
+		l := style.Muted().Render(label + " ")
 		if selected {
 			return l + lipgloss.NewStyle().Bold(true).Foreground(th.Accent).Render("[ "+value+" ]")
 		}
@@ -157,18 +155,17 @@ func (m *Model) configLine() string {
 }
 
 func (m *Model) stateLabel() string {
-	th := style.ActiveTheme()
 	switch m.state {
 	case runner.StateRunning:
-		return lipgloss.NewStyle().Foreground(th.Warning).Render("running")
+		return style.Warning().Render("running")
 	case runner.StateDone:
-		return lipgloss.NewStyle().Foreground(th.Success).Render("passed")
+		return style.Success().Render(ui.MarkOK + " passed")
 	case runner.StateFailed:
-		return lipgloss.NewStyle().Foreground(th.Danger).Render("failed")
+		return style.Danger().Render(ui.MarkError + " failed")
 	case runner.StateCancelled:
-		return lipgloss.NewStyle().Foreground(th.Danger).Render("cancelled")
+		return style.Danger().Render(ui.MarkWarn + " cancelled")
 	default:
-		return lipgloss.NewStyle().Foreground(th.Muted).Render("idle")
+		return style.Muted().Render("idle")
 	}
 }
 
@@ -178,18 +175,18 @@ func (m *Model) resultLines(w int) []string {
 	if m.startedAt.IsZero() || m.Running() || m.results == nil {
 		return nil
 	}
-	verdict := verdictFailed
+	verdict := VerdictFailed
 	verdictStyle := lipgloss.NewStyle().Bold(true).Foreground(th.Danger).Render("FAIL")
 	switch m.state {
 	case runner.StateDone:
-		verdict = verdictPassed
+		verdict = VerdictPassed
 		verdictStyle = lipgloss.NewStyle().Bold(true).Foreground(th.Success).Render("PASS")
 	case runner.StateCancelled:
-		verdict = verdictCancelled
+		verdict = VerdictCancelled
 		verdictStyle = lipgloss.NewStyle().Bold(true).Foreground(th.Warning).Render("CANCELLED")
 	}
 
-	label := func(s string) string { return style.Hint.Render(s + " ") }
+	label := func(s string) string { return style.Muted().Render(s + " ") }
 	value := func(s string) string { return lipgloss.NewStyle().Foreground(th.Value).Render(s) }
 
 	summary := lipgloss.JoinHorizontal(lipgloss.Top,
@@ -199,18 +196,18 @@ func (m *Model) resultLines(w int) []string {
 		label("Exit"), value(fmt.Sprint(m.exitCode)),
 	)
 	lines := []string{
-		style.SectionTitle.Render("Result · " + verdict),
+		style.Section().Render("Result · " + verdict),
 		ui.Truncate(summary, max(20, w-4), true),
 	}
 	if m.errText != "" && m.state != runner.StateDone {
-		st := lipgloss.NewStyle().Foreground(th.Danger)
+		st := style.Danger()
 		if m.state == runner.StateCancelled {
-			st = lipgloss.NewStyle().Foreground(th.Warning)
+			st = style.Warning()
 		}
 		lines = append(lines, st.Render("reason: "+m.errText))
 	}
 	if m.logPath != "" {
-		lines = append(lines, style.Hint.Render("log: "+m.logPath+"  (full run: view the log file)"))
+		lines = append(lines, style.Muted().Render("log: "+m.logPath+"  (full run: view the log file)"))
 	}
 	return lines
 }
@@ -222,11 +219,11 @@ func (m *Model) historyLines() []string {
 	}
 	th := style.ActiveTheme()
 	rows := [][]string{{
-		style.ColHeader.Render("When"),
-		style.ColHeader.Render("Verdict"),
-		style.ColHeader.Render("Err"),
-		style.ColHeader.Render("Dur"),
-		style.ColHeader.Render("Config"),
+		style.ColumnHeader().Render("When"),
+		style.ColumnHeader().Render("Verdict"),
+		style.ColumnHeader().Render("Err"),
+		style.ColumnHeader().Render("Dur"),
+		style.ColumnHeader().Render("Config"),
 	}}
 	shown := 0
 	for _, rec := range m.runs {
@@ -238,14 +235,14 @@ func (m *Model) historyLines() []string {
 		if verdict == "" {
 			verdict = "-"
 		}
-		st := lipgloss.NewStyle().Foreground(th.Muted)
+		st := style.Muted()
 		switch verdict {
-		case verdictPassed:
-			st = lipgloss.NewStyle().Foreground(th.Success)
-		case verdictFailed:
-			st = lipgloss.NewStyle().Foreground(th.Danger)
-		case verdictCancelled:
-			st = lipgloss.NewStyle().Foreground(th.Warning)
+		case VerdictPassed:
+			st = style.Success()
+		case VerdictFailed:
+			st = style.Danger()
+		case VerdictCancelled:
+			st = style.Warning()
 		}
 		opts := rec.Result.Options.options()
 		config := ui.DurationLabel(opts.Duration)
@@ -253,14 +250,14 @@ func (m *Model) historyLines() []string {
 			config += " · " + name
 		}
 		rows = append(rows, []string{
-			lipgloss.NewStyle().Foreground(th.Muted).Render(rec.Record.StartedAt.Local().Format("01-02 15:04")),
+			style.Muted().Render(rec.Record.StartedAt.Local().Format("01-02 15:04")),
 			st.Render(verdict),
 			lipgloss.NewStyle().Foreground(th.Value).Render(fmt.Sprint(rec.Result.Errors)),
-			lipgloss.NewStyle().Foreground(th.Muted).Render(ui.DurationLabel(time.Duration(rec.Record.DurationMS) * time.Millisecond)),
+			style.Muted().Render(ui.DurationLabel(time.Duration(rec.Record.DurationMS) * time.Millisecond)),
 			lipgloss.NewStyle().Foreground(th.Label).Render(config),
 		})
 	}
-	out := []string{style.SectionTitle.Render(fmt.Sprintf("History (last %d, newest first)", len(m.runs)))}
+	out := []string{style.Section().Render(fmt.Sprintf("History (last %d, newest first)", len(m.runs)))}
 	out = append(out, strings.Split(ui.JoinColumns(rows, historyColumnWidths), "\n")...)
 	return out
 }

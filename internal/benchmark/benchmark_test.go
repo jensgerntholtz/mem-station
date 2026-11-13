@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -19,12 +17,11 @@ import (
 	"mem-station/internal/runner"
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
+	"mem-station/internal/uitest"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-var updateGolden = flag.Bool("update", false, "rewrite golden files")
 
 var (
 	testStart = time.Date(2024, 5, 1, 12, 0, 0, 0, time.UTC)
@@ -548,7 +545,7 @@ func TestGoldenViews(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := stateModel(t, tc.state)
-			checkGolden(t, tc.name+".golden", m.View(tc.w, tc.h))
+			uitest.GoldenView(t, "testdata", tc.name+".golden", tc.w, tc.h, m.View(tc.w, tc.h))
 		})
 	}
 }
@@ -601,31 +598,6 @@ func stateModel(t *testing.T, state runner.State) *Model {
 		m.output = "stress-ng: info: dispatching memrate workers"
 	}
 	return m
-}
-
-// ansiRe strips SGR sequences so goldens do not depend on the color profile.
-var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*[a-zA-Z]")
-
-func checkGolden(t *testing.T, name, got string) {
-	t.Helper()
-	got = strings.TrimRight(ansiRe.ReplaceAllString(got, ""), "\n")
-	path := filepath.Join("testdata", name)
-	if *updateGolden {
-		if err := os.MkdirAll("testdata", 0o755); err != nil {
-			t.Fatalf("mkdir testdata: %v", err)
-		}
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-			t.Fatalf("write golden: %v", err)
-		}
-		return
-	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read golden %s (run with -update): %v", path, err)
-	}
-	if got != strings.TrimRight(string(want), "\n") {
-		t.Errorf("golden %s mismatch:\n--- got ---\n%s\n--- want ---\n%s", path, got, want)
-	}
 }
 
 // TestStopCancelsRunningJob checks the app's quit/cancel path reaches the

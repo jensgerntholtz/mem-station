@@ -1,0 +1,24 @@
+  MemStation   0.2.0-dev  3200 MT/s · 16384 MB · F4-3200C16-16GVK               
+   1 Timings    2 Benchmark    3 Burn-in                                        
+ ╭────────────────────────────────────────────────────────────────────────────╮ 
+ │ Timings                                                                    │ 
+ │ Setting           Detected   Draft      Delta     Safety                   │ 
+ │ General                                                                    │ 
+ │ Channels          2          2          +1        ok                       │ 
+ │ DRAM Ratio        16         16                                            │ 
+ │ DRAM Freq         3200       3200       +2400     ok                       │ 
+ │                                                                            │ 
+ │ Primary Timings                                                            │ 
+ │ CAS (tCL)         16         16         0         ok                       │ 
+ │ tRCD              18         18         +2        ok                       │ 
+ │ more fields - ctrl+s apply - ctrl+r reset - l lock[on]                     │ 
+ ╰────────────────────────────────────────────────────────────────────────────╯ 
+                                                                                
+ ╭────────────────────────────────────────────────────────────────────────────╮ 
+ │ Guidance                                                                   │ 
+ │ Perf Projection                                                            │ 
+ │ Peak:      51.20 GB/s                                                      │ 
+ │ Per chan:  25.60 GB/s                                                      │ 
+ │ Sustained: 41.98 GB/s (82% eff)                                            │ 
+ ╰────────────────────────────────────────────────────────────────────────────╯ 
+ Detected 2 channels at 32…↑/k select  enter edit  tab next field  l ratio lock 

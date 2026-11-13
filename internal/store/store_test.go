@@ -194,3 +194,101 @@ func TestMaterializeJobAppendsMissingTimeout(t *testing.T) {
 		t.Errorf("missing timeout not appended:\n%s", data)
 	}
 }
+
+// TestExportFileToChosenPath checks a user-chosen destination is created with
+// private permissions and returns the absolute path.
+func TestExportFileToChosenPath(t *testing.T) {
+	newTestDir(t)
+	path := filepath.Join(t.TempDir(), "nested", "profile.json")
+
+	written, err := ExportFile(path, config.Profile{Name: "active", Values: map[string]string{config.KeyFreq: "3200"}})
+	if err != nil {
+		t.Fatalf("ExportFile: %v", err)
+	}
+	if written != path {
+		t.Errorf("ExportFile returned %q, want %q", written, path)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat export: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("export mode = %o, want 600", perm)
+	}
+	if _, err := ExportFile("", config.Profile{}); err == nil {
+		t.Error("ExportFile accepted an empty path")
+	}
+}
+
+// TestImportProfileValidation rejects malformed files and accepts a profile
+// written by ExportFile.
+func TestImportProfileValidation(t *testing.T) {
+	newTestDir(t)
+	dir := t.TempDir()
+
+	valid := filepath.Join(dir, "valid.json")
+	if _, err := ExportFile(valid, config.Profile{
+		Name:   "valid",
+		Values: map[string]string{config.KeyFreq: "3200", config.KeyVoltage: "1.35"},
+	}); err != nil {
+		t.Fatalf("ExportFile: %v", err)
+	}
+	profile, err := ImportProfile(valid)
+	if err != nil {
+		t.Fatalf("ImportProfile(valid): %v", err)
+	}
+	if profile.Name != "valid" || profile.Values[config.KeyFreq] != "3200" {
+		t.Errorf("imported profile = %+v", profile)
+	}
+
+	cases := []struct {
+		name    string
+		content string
+	}{
+		{"broken json", `{"values":`},
+		{"no values", `{"name":"empty","values":{}}`},
+		{"unknown key", `{"name":"typo","values":{"dram_feq":"3200"}}`},
+	}
+	for _, tc := range cases {
+		path := filepath.Join(dir, strings.ReplaceAll(tc.name, " ", "-")+".json")
+		if err := os.WriteFile(path, []byte(tc.content), 0o600); err != nil {
+			t.Fatalf("write %s: %v", tc.name, err)
+		}
+		if _, err := ImportProfile(path); err == nil {
+			t.Errorf("%s: ImportProfile accepted an invalid file", tc.name)
+		}
+	}
+
+	// A nameless profile takes its name from the file stem.
+	nameless := filepath.Join(dir, "daily-3200.json")
+	if err := os.WriteFile(nameless, []byte(`{"values":{"dram_freq":"3200"}}`), 0o600); err != nil {
+		t.Fatalf("write nameless profile: %v", err)
+	}
+	profile, err = ImportProfile(nameless)
+	if err != nil {
+		t.Fatalf("ImportProfile(nameless): %v", err)
+	}
+	if profile.Name != "daily-3200" {
+		t.Errorf("derived name = %q, want daily-3200", profile.Name)
+	}
+
+	if _, err := ImportProfile(filepath.Join(dir, "missing.json")); err == nil {
+		t.Error("ImportProfile accepted a missing file")
+	}
+}
+
+// TestExportPathIsAbsolute checks the default export location is inside the
+// state dir and absolute, so it can prefill a "save as" prompt.
+func TestExportPathIsAbsolute(t *testing.T) {
+	dir := newTestDir(t)
+	path, err := ExportPath("Profile 1")
+	if err != nil {
+		t.Fatalf("ExportPath: %v", err)
+	}
+	if !filepath.IsAbs(path) {
+		t.Errorf("ExportPath returned a relative path %q", path)
+	}
+	if want := filepath.Join(dir, "exports", "profile-1.json"); path != want {
+		t.Errorf("ExportPath = %q, want %q", path, want)
+	}
+}

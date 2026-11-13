@@ -14,14 +14,13 @@ import (
 // imcLines renders the IMC register dump: one block per memory channel with
 // the turnaround matrix and the raw decoded register values.
 func (m *Model) imcLines() []string {
-	lines := []string{style.SectionTitle.Render("IMC Tertiary Timings (Haswell)")}
+	lines := []string{style.Section().Render("IMC Tertiary Timings (Haswell)")}
 	if m.imcNote != "" {
-		th := style.ActiveTheme()
-		lines = append(lines, lipgloss.NewStyle().Foreground(th.Warning).Render(m.imcNote))
+		lines = append(lines, style.Warning().Render(m.imcNote))
 	}
 	if len(m.imc) == 0 {
 		lines = append(lines, "",
-			style.Hint.Render("No IMC data. Reading MCHBAR needs root and the iomem=relaxed kernel parameter."),
+			style.Muted().Render("No IMC data. Reading MCHBAR needs root and the iomem=relaxed kernel parameter."),
 		)
 		return lines
 	}
@@ -54,8 +53,8 @@ func (m *Model) channelIMC(t memory.IMCTimings) string {
 		{"tRFC", cell(t.TRFC)},
 	}, []int{14, 6})
 
-	left := style.SectionTitle.Render(fmt.Sprintf("Channel %d - Turnaround", t.Channel)) + "\n" + matrix
-	right := style.SectionTitle.Render("Register Values") + "\n" + registers
+	left := style.Section().Render(fmt.Sprintf("Channel %d - Turnaround", t.Channel)) + "\n" + matrix
+	right := style.Section().Render("Register Values") + "\n" + registers
 	return lipgloss.JoinHorizontal(lipgloss.Top,
 		lipgloss.NewStyle().Width(34).Render(left), "  ", right)
 }

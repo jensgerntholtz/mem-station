@@ -9,27 +9,27 @@ import (
 // spdLines renders every parsed SPD field, grouped for scanning. Nothing is
 // silently dropped: the panel scrolls instead.
 func (m *Model) spdLines() []string {
-	label := func(s string) string { return style.InfoLabel.Render(s) }
+	label := func(s string) string { return style.FieldLabel().Width(28).Render(s) }
 	value := func(s string) string {
 		if s == "" {
-			return style.MetricMuted.Render("-")
+			return style.Muted().Render("-")
 		}
-		return style.InfoValue.Render(s)
+		return style.ValueText().Render(s)
 	}
 	line := func(k, v string) string { return label(k) + value(v) }
 
 	s := m.spd
 	if s == nil {
 		return []string{
-			style.SectionTitle.Render("SPD Information"),
+			style.Section().Render("SPD Information"),
 			"",
-			style.Hint.Render("No SPD data available. Detection needs dmidecode (root) or decode-dimms."),
-			style.Hint.Render("Press R on the Timings view to retry detection."),
+			style.Muted().Render("No SPD data available. Detection needs dmidecode (root) or decode-dimms."),
+			style.Muted().Render("Press R on the Timings view to retry detection."),
 		}
 	}
 
 	lines := []string{
-		style.SectionTitle.Render("Module"),
+		style.Section().Render("Module"),
 		line("Manufacturer", s.ModuleManufacturer),
 		line("Part number", s.PartNumber),
 		line("Module type", s.ModuleType),
@@ -38,13 +38,13 @@ func (m *Model) spdLines() []string {
 		line("Ranks", s.Ranks),
 		line("DIMMs", s.NumDIMMs),
 		"",
-		style.SectionTitle.Render("Speed & Timings"),
+		style.Section().Render("Speed & Timings"),
 		line("Module speed", s.ModuleSpeed),
 		line("Timings", s.TimingString),
 		line("Supported CL", s.SupportedCL),
 		line("tCK min", s.TCKmin),
 		"",
-		style.SectionTitle.Render("Primary"),
+		style.Section().Render("Primary"),
 		line("tRC", s.TRC),
 		line("tWR", s.TWR),
 		line("tRRD", s.TRRD),
@@ -52,7 +52,7 @@ func (m *Model) spdLines() []string {
 		line("tRTP", s.TRTP),
 		line("tFAW", s.TFAW),
 		"",
-		style.SectionTitle.Render("Electrical / Mechanical"),
+		style.Section().Render("Electrical / Mechanical"),
 		line("DRAM manufacturer", s.DRAMManufacturer),
 		line("Voltage", s.Voltage),
 		line("Bus width", s.BusWidth),
@@ -66,9 +66,9 @@ func (m *Model) spdLines() []string {
 	}
 
 	if len(s.TimingsBySpeed) > 0 {
-		lines = append(lines, "", style.SectionTitle.Render("JEDEC profiles"))
+		lines = append(lines, "", style.Section().Render("JEDEC profiles"))
 		for _, t := range s.TimingsBySpeed {
-			lines = append(lines, style.Hint.Render("· "+t))
+			lines = append(lines, style.Muted().Render("· "+t))
 		}
 	}
 	return lines

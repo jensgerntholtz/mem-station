@@ -3,10 +3,8 @@ package burnin
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -17,12 +15,11 @@ import (
 	"mem-station/internal/runner"
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
+	"mem-station/internal/uitest"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
-
-var updateGolden = flag.Bool("update", false, "rewrite golden files")
 
 var (
 	testStart = time.Date(2024, 5, 1, 12, 0, 0, 0, time.UTC)
@@ -220,7 +217,7 @@ func TestSuccessfulRunPersistsHistory(t *testing.T) {
 	if err := json.Unmarshal(recs[0].Payload, &payload); err != nil {
 		t.Fatalf("payload: %v", err)
 	}
-	if payload.Verdict != verdictPassed || !payload.Success || payload.Options.PresetName == "" {
+	if payload.Verdict != VerdictPassed || !payload.Success || payload.Options.PresetName == "" {
 		t.Errorf("payload = %+v", payload)
 	}
 	if payload.Options.DurationSeconds != 1800 {
@@ -257,7 +254,7 @@ func TestErrorLinesFailTheRunEvenWithExitZero(t *testing.T) {
 	}
 	var payload Payload
 	_ = json.Unmarshal(recs[0].Payload, &payload)
-	if payload.Verdict != verdictFailed || payload.Errors != 1 {
+	if payload.Verdict != VerdictFailed || payload.Errors != 1 {
 		t.Errorf("payload = %+v", payload)
 	}
 }
@@ -291,7 +288,7 @@ func TestStopOnErrorCancels(t *testing.T) {
 		t.Fatalf("history = %d records, want 1", len(recs))
 	}
 	_ = json.Unmarshal(recs[0].Payload, &payload)
-	if payload.Verdict != verdictFailed || !payload.StoppedOnError {
+	if payload.Verdict != VerdictFailed || !payload.StoppedOnError {
 		t.Errorf("payload = %+v", payload)
 	}
 }
@@ -323,7 +320,7 @@ func TestUserCancelIsDistinctFromFailure(t *testing.T) {
 	}
 	var payload Payload
 	_ = json.Unmarshal(recs[0].Payload, &payload)
-	if payload.Verdict != verdictCancelled || payload.Success {
+	if payload.Verdict != VerdictCancelled || payload.Success {
 		t.Errorf("payload = %+v", payload)
 	}
 }
@@ -383,7 +380,7 @@ func TestExportWritesJSON(t *testing.T) {
 	if err := json.Unmarshal(data, &doc); err != nil {
 		t.Fatalf("export json: %v", err)
 	}
-	if doc.Kind != "burnin" || doc.Result.Verdict != verdictPassed || doc.LogPath == "" {
+	if doc.Kind != "burnin" || doc.Result.Verdict != VerdictPassed || doc.LogPath == "" {
 		t.Errorf("export document = %+v", doc)
 	}
 }
@@ -393,7 +390,7 @@ func TestHistoryLoadsOnInit(t *testing.T) {
 	t.Setenv("MEM_STATION_STATE_DIR", t.TempDir())
 	payload, _ := json.Marshal(Payload{
 		Options: payloadOptions{PresetName: "memory-heavy (embedded)", DurationSeconds: 600},
-		Verdict: verdictFailed,
+		Verdict: VerdictFailed,
 		Errors:  4,
 	})
 	if err := store.AppendHistory(store.Record{
@@ -411,7 +408,7 @@ func TestHistoryLoadsOnInit(t *testing.T) {
 		t.Fatalf("loaded runs = %d, want 1", len(m.runs))
 	}
 	out := m.View(118, 37)
-	if !strings.Contains(out, "History") || !strings.Contains(out, verdictFailed) {
+	if !strings.Contains(out, "History") || !strings.Contains(out, VerdictFailed) {
 		t.Errorf("history table missing:\n%s", out)
 	}
 }
@@ -449,7 +446,7 @@ func TestGoldenViews(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := stateModel(t, tc.state)
-			checkGolden(t, tc.name+".golden", m.View(tc.w, tc.h))
+			uitest.GoldenView(t, "testdata", tc.name+".golden", tc.w, tc.h, m.View(tc.w, tc.h))
 		})
 	}
 }
@@ -504,31 +501,6 @@ func stateModel(t *testing.T, state runner.State) *Model {
 // parsedResults builds a parse.Results summary for a fixed state.
 func parsedResults(exitCode, errors int, success bool) *parse.Results {
 	return &parse.Results{Duration: "5 mins", ExitCode: exitCode, Errors: errors, Success: success}
-}
-
-// ansiRe strips SGR sequences so goldens do not depend on the color profile.
-var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*[a-zA-Z]")
-
-func checkGolden(t *testing.T, name, got string) {
-	t.Helper()
-	got = strings.TrimRight(ansiRe.ReplaceAllString(got, ""), "\n")
-	path := filepath.Join("testdata", name)
-	if *updateGolden {
-		if err := os.MkdirAll("testdata", 0o755); err != nil {
-			t.Fatalf("mkdir testdata: %v", err)
-		}
-		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
-			t.Fatalf("write golden: %v", err)
-		}
-		return
-	}
-	want, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read golden %s (run with -update): %v", path, err)
-	}
-	if got != strings.TrimRight(string(want), "\n") {
-		t.Errorf("golden %s mismatch:\n--- got ---\n%s\n--- want ---\n%s", path, got, want)
-	}
 }
 
 // TestStopCancelsRunningJob checks the app's quit/cancel path reaches the
