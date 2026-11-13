@@ -128,6 +128,9 @@ Expected:
     `info --json`; `--json --markdown` and `--history 0` exit `2`.
   - A machine with no SPD, no applied profile and no runs still produces every
     section with an explanation instead of an empty document.
+- Demo tapes (local, not CI): `./demo/record.sh` produces `demo/*.gif`; each
+  tape should show its named flow and end cleanly on `q`. Recording needs
+  `ffmpeg`, `vhs` and `ttyd`; `demo/README.md` has the bootstrap commands.
 
 CI (`.github/workflows/ci.yml`) runs gofmt, `go vet ./...`, `go build ./...`,
 and `go test ./... -count=1` on `ubuntu-latest`. CI does not run hardware, the

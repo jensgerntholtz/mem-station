@@ -257,6 +257,10 @@ repo-wide update; review the diff before committing.
 CI runs gofmt, vet, build, the default test suite and the race suite on
 `ubuntu-latest` with no root and no hardware.
 
+`./demo/record.sh` records the demo GIFs locally with VHS; see
+[`demo/README.md`](demo/README.md). It is a developer convenience and is not
+part of CI.
+
 Layout: `internal/app` is the shell (layout, global keys, routing); tabs live in
 `internal/sysinfo`, `internal/benchmark`, and `internal/burnin` and never import
 `internal/app`. Shared leaves: `config`, `runner`, `store`, `style`, `ui`,

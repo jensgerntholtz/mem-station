@@ -1,9 +1,8 @@
 # Plan: lean into the Charmbracelet ecosystem
 
-Status: P0 (guardrails), P1 (v2 stack migration), P2 (CLI: fang/log/tone),
-P3 (overlay, pickers, progress, $EDITOR) and P4 (`report` via glamour) are
-**done**. P5 (docs/demos/CI) is open. Two deliberate omissions are recorded in
-place: the bubbles/table history migration and the help-pane docs renderer.
+Status: P0 through P5 are **done**. Three deliberate omissions are recorded in
+place: the bubbles/table history migration, the help-pane docs renderer, and the
+CI side of the demo pipeline (recording is local only).
 Scope: which `github.com/charmbracelet` repos and libraries apply to MemStation,
 what each buys us, and in what order to adopt them.
 
@@ -311,15 +310,37 @@ glamour; `--style dark` forces styling even when piped; `NO_COLOR=1` yields
 plain rendered text. Golden `internal/report/testdata/report_full.md.golden`
 pins the whole document.
 
-### P5 — Docs, demos and CI (1-2 days)
+### P5 — Demos (local tapes) — **done, CI deliberately skipped**
 
-- `demo/timings.tape`, `demo/bench.tape`, `demo/burnin.tape` for VHS; embed
-  GIFs in README next to the existing screenshot.
-- `.github/workflows/demo.yml` using `vhs-action` on release tags.
-- CI: add `go test ./... -race -count=1`, `go vet -tags integration ./...`,
-  and a golden-drift guard (fail if `-update` produced an uncommitted diff).
-- README: dependency/requirements note, `--json` canonical flags, new commands,
-  and a short "built with Charm" section naming the libs in use.
+Landed in the `demo:` commit. No module changes: VHS and ttyd are developer
+tools, not dependencies.
+
+- `demo/record.sh` is the single entry point: it builds the TUI, reseeds a
+  throwaway state directory, puts a fake `stress-ng` and the demo tools on
+  `PATH`, and records the tapes. Tools can live in `demo/.tools/` (gitignored)
+  so nothing is installed system-wide.
+- Four tapes: `timings.tape` (semantic steps, ratio lock rescale, apply review
+  overlay, SPD/IMC views, help overlay), `bench.tape` (live log, parsed results,
+  history), `burnin.tape` (preset cycling, verdict, error counter),
+  `pickers.tape` (`ctrl+l` fuzzy filter and `ctrl+o` browser).
+- `demo/seed` writes one applied profile plus three named profiles, so every
+  recording starts from the same values.
+- `demo/bin/stress-ng` is a deterministic stand-in that prints the line shapes
+  both parsers expect, paced over ~3.5 s, and exits 0. Without it every tape
+  would need a real 30-minute burn-in.
+- Tapes pin the grid with `Set Columns 120` / `Set Rows 40`, which exercises the
+  two-column layout, and use `Set PlaybackSpeed 1.2` to compress idle time.
+
+Deliberately not done, by request:
+
+- **CI integration** (`vhs-action` on release, demo workflow). Recording stays
+  local; the GIFs are gitignored and can be published with `git add -f`.
+- **Golden-drift CI guard.** `make check` already compares goldens; a separate
+  "did `-update` leave a diff" gate is not wanted.
+
+Still open from the original P5 list, and cheap whenever it is wanted: a short
+"built with Charm" section in the README naming the libraries in use. The
+dependency/flag/command docs it also listed were already updated in P2-P4.
 
 ### P6 — Verification
 
@@ -362,10 +383,11 @@ Already covered by P1, so the manual matrix no longer needs to prove it:
 
 ---
 
-## 5. Recommended next slice
+## 5. Where this leaves the stack
 
-P5: VHS tapes for the README (timings edit, pickers, burn-in), `vhs-action` on
-release, and a CI golden-drift guard. Nothing there changes runtime behaviour.
+Everything from the original survey is adopted except the items listed as
+deliberate omissions. The remaining optional work is editorial: publish the
+demo GIFs (or a "built with Charm" note) when the README next changes.
 
 ## 6. Open questions
 
