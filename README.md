@@ -70,9 +70,23 @@ go build -o mem-station ./cmd/mem-station
 | `--job PATH` | burn-in job file, overrides `MEM_STATION_JOB` |
 | `--version` | print the version and exit |
 
+These apply to every command, not just the launcher:
+
+| Flag | Meaning |
+| --- | --- |
+| `--log-file PATH` | append diagnostics to a file as well as stderr |
+| `-v`, `--verbose` | log debug diagnostics (start options, run results) |
+| `-q`, `--quiet` | log errors only, e.g. suppress a missing-job warning |
+
 `NO_COLOR=1` and `CLICOLOR=0` are honoured without any flag. State is never
 conveyed by color alone: severities and verdicts carry `ok`, `?`, `!`, and `x`
 markers.
+
+The command line is built with [fang](https://github.com/charmbracelet/fang), so
+`mem-station help`, per-command `--help`, shell completions
+(`mem-station completion bash`) and man pages (`mem-station man`) come for free.
+Both `--json` and the documented single-dash `-json` work; long flags are
+rewritten before parsing.
 
 ## Keys
 
@@ -138,8 +152,9 @@ only step that writes the active profile, and it never touches hardware.
 ## Headless commands
 
 The same hardware/runner/store code powers scriptable commands. Human output goes
-to stdout, diagnostics to stderr, and `-json` prints exactly one JSON document on
-stdout.
+to stdout, diagnostics to stderr, and `--json` prints exactly one JSON document on
+stdout. The older single-dash forms (`-json`, `-duration`, `-out`, ...) still
+work.
 
 The direct IMC register reader has verified layouts for Intel Sandy Bridge, Ivy
 Bridge, Haswell, and Broadwell. Other CPUs still get primary/secondary timings
@@ -160,7 +175,9 @@ mem-station burnin -duration 5m -job ./my.job -json -out ./burnin.json
 ```
 
 Exit codes: `0` success (a passed run for `burnin`, a parsed run for `bench`),
-`1` the run failed, `2` usage error, `130` interrupted.
+`1` the run failed, `2` usage error, `130` interrupted. A failed run exits `1`
+without an extra error banner, because the verdict is already on stdout; usage
+errors are printed by fang on stderr.
 
 `SIGINT`/`SIGTERM` cancel the running job's process group and still report the
 runner's terminal state, so a script sees `cancelled` rather than a hang.

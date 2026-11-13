@@ -52,6 +52,6 @@ func newRecord(kind runner.Kind, res jobResult, payload any) store.Record {
 // and stdout already carry the result.
 func persistRecord(deps Deps, rec store.Record) {
 	if err := store.AppendHistory(rec); err != nil {
-		fmt.Fprintln(deps.Stderr, "mem-station: history not saved:", err)
+		deps.Log.Error("history not saved", "err", err)
 	}
 }

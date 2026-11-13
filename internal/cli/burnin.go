@@ -11,41 +11,61 @@ import (
 	"mem-station/internal/runner"
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
+
+	"github.com/spf13/cobra"
 )
+
+// burninOptions are the flags of the burnin command.
+type burninOptions struct {
+	duration time.Duration
+	preset   string
+	job      string
+	asJSON   bool
+	out      string
+}
+
+// newBurninCmd builds the burnin subcommand.
+func newBurninCmd(deps Deps) *cobra.Command {
+	opts := burninOptions{duration: 30 * time.Minute}
+	cmd := &cobra.Command{
+		Use:   "burnin",
+		Short: "Run a stress-ng burn-in job",
+		Long: `Materialize a burn-in job with the chosen timeout and run it headless.
+
+The verdict is passed when stress-ng exits cleanly with no errors, failed
+otherwise, and cancelled when the run was interrupted. Interrupting a run is
+never reported as a stability result.`,
+		Args: cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return runBurnin(deps, opts)
+		},
+	}
+	cmd.Flags().DurationVar(&opts.duration, "duration", 30*time.Minute, "run length, e.g. 5m, 30m, 1h")
+	cmd.Flags().StringVar(&opts.preset, "preset", "", "preset name or index (default: memory-heavy embedded)")
+	cmd.Flags().StringVar(&opts.job, "job", "", "custom stress-ng job file (overrides MEM_STATION_JOB)")
+	cmd.Flags().BoolVar(&opts.asJSON, "json", false, "print one JSON object on stdout")
+	cmd.Flags().StringVar(&opts.out, "out", "", "also write the JSON result to this path")
+	return cmd
+}
 
 // runBurnin materializes a burn-in job with the chosen timeout and runs it
 // headless, reporting the parsed verdict on stdout.
-func runBurnin(deps Deps, args []string) int {
-	fs := newFlagSet("burnin", deps)
-	duration := fs.Duration("duration", 30*time.Minute, "run length, e.g. 5m, 30m, 1h")
-	presetName := fs.String("preset", "", "preset name or index (default: memory-heavy embedded)")
-	jobPath := fs.String("job", "", "custom stress-ng job file (overrides MEM_STATION_JOB)")
-	asJSON := fs.Bool("json", false, "print one JSON object on stdout")
-	out := fs.String("out", "", "also write the JSON result to this path")
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
-	}
-	if fs.NArg() > 0 {
-		fmt.Fprintf(deps.Stderr, "mem-station burnin: unexpected argument %q\n", fs.Arg(0))
-		return ExitUsage
-	}
-
-	opts := burnin.Options{Duration: *duration, StopOnError: true}
+func runBurnin(deps Deps, o burninOptions) error {
+	opts := burnin.Options{Duration: o.duration, StopOnError: true}
 	if err := opts.Validate(); err != nil {
-		fmt.Fprintln(deps.Stderr, "mem-station burnin:", err)
-		return ExitUsage
+		return usageErr(err)
 	}
-	preset, err := resolvePreset(deps, *jobPath, *presetName)
+	preset, err := resolvePreset(deps, o.job, o.preset)
 	if err != nil {
-		fmt.Fprintln(deps.Stderr, "mem-station burnin:", err)
-		return ExitUsage
+		return usageErr(err)
 	}
 
 	materialized, err := store.MaterializeJob(preset.Content, opts.Duration)
 	if err != nil {
-		fmt.Fprintln(deps.Stderr, "mem-station burnin: cannot materialize job:", err)
-		return ExitFailed
+		return fail(fmt.Errorf("cannot materialize job: %w", err))
 	}
+	deps.Log.Debug("starting burn-in",
+		"preset", preset.ShortName(), "duration", opts.Duration, "job", materialized)
 
 	ctx, stop := deps.context()
 	defer stop()
@@ -59,6 +79,9 @@ func runBurnin(deps Deps, args []string) int {
 	}
 	res := runJob(ctx, deps.Start, spec)
 	results := parse.ParseBurnInOutput(res.Output, res.ExitCode, res.Err)
+	deps.Log.Debug("burn-in finished",
+		"exit_code", res.ExitCode, "errors", results.Errors,
+		"duration", res.duration(), "log", res.LogPath)
 
 	verdict := burnin.VerdictFailed
 	switch {
@@ -83,23 +106,21 @@ func runBurnin(deps Deps, args []string) int {
 		Result:     payload,
 	}
 	saved := ""
-	if *out != "" {
-		path, err := store.ExportFile(*out, doc)
+	if o.out != "" {
+		path, err := store.ExportFile(o.out, doc)
 		if err != nil {
-			fmt.Fprintln(deps.Stderr, "mem-station burnin: export failed:", err)
-			return ExitFailed
+			return fail(fmt.Errorf("export failed: %w", err))
 		}
 		saved = path
 	}
-	if *asJSON {
+	if o.asJSON {
 		if err := writeJSON(deps.Stdout, doc); err != nil {
-			fmt.Fprintln(deps.Stderr, "mem-station burnin:", err)
-			return ExitFailed
+			return fail(err)
 		}
 	} else {
 		printBurninHuman(deps, preset, opts, res, payload, materialized, saved)
 	}
-	return burninExitCode(payload)
+	return exitCodeErr(burninExitCode(payload))
 }
 
 // resolvePreset selects a job source by name, index, or the default (the
@@ -107,7 +128,7 @@ func runBurnin(deps Deps, args []string) int {
 func resolvePreset(deps Deps, jobPath, name string) (burnin.Preset, error) {
 	presets, warn := burnin.Presets(jobPath)
 	if warn != "" {
-		fmt.Fprintln(deps.Stderr, "mem-station burnin:", warn)
+		deps.Log.Warn(warn)
 	}
 	name = strings.TrimSpace(name)
 	if name == "" {

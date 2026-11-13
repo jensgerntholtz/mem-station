@@ -1,13 +1,15 @@
 # Plan: lean into the Charmbracelet ecosystem
 
-Status: P0 (guardrails) and P1 (v2 stack migration) are **done**. P2 onward is
-open.
+Status: P0 (guardrails), P1 (v2 stack migration) and P2 (CLI: fang/log/tone) are
+**done**. P3 onward is open.
 Scope: which `github.com/charmbracelet` repos and libraries apply to MemStation,
 what each buys us, and in what order to adopt them.
 
 Current stack (from `go.mod`): `charm.land/bubbletea/v2 v2.1.1`,
 `charm.land/bubbles/v2 v2.2.1`, `charm.land/lipgloss/v2 v2.1.0`, plus
-`x/ansi` and transitive `colorprofile`/`ultraviolet`. Go directive `1.26.7`.
+`charm.land/fang/v2 v2.0.1`, `charm.land/log/v2 v2.0.1`, `charm.land/tone v0.2.0`,
+`charm.land/cobra`/`pflag`, plus `x/ansi` and transitive
+`colorprofile`/`ultraviolet`. Go directive `1.26.7`.
 
 ---
 
@@ -22,9 +24,9 @@ Three tiers.
 | `bubbletea` v2 (`charm.land/bubbletea/v2` v2.1.1) | Declarative `tea.View` (alt-screen, mouse, window title, native progress bar, program status), `KeyPressMsg`, paste messages, keyboard enhancements. Removes `--mouse`/alt-screen plumbing from `internal/cli/tui.go` and fixes esc/alt/shift-tab ambiguities in the timing editor. |
 | `lipgloss` v2 (`charm.land/lipgloss/v2` v2.1.0) | Cell compositor (`NewLayer`/`Compositor`) so the help overlay and apply/import modals render **over** the tab instead of replacing it; real `LightDark` adaptive colors (the current `AdaptiveColor` pairs are identical light/dark, i.e. dead code); `image/color` types. |
 | `bubbles` v2 (`charm.land/bubbles/v2` v2.2.1) | Required companion of the two above. Unlocks `list`, `filepicker`, `table`, `progress`, `textarea` for the profile picker, import/export paths, history tables and job editing. |
-| `fang` v2 (`charm.land/fang/v2` v2.0.1) | Replaces the hand-rolled `flag` tree in `internal/cli` with styled help/errors, `--version` with build metadata, shell completions and man pages. Four subcommands with 3-7 flags each justify it. |
-| `log` v2 (`charm.land/log/v2` v2.0.1) | One leveled logger for runner/CLI diagnostics, `--log-file`, `--verbose`, structured run events. Today diagnostics are scattered `fmt.Fprintf(deps.Stderr, ...)` calls. |
-| `x/exp/charmtone` (v0.1.1) | Real palette tokens for `internal/style` instead of raw 256-color indexes. |
+| `fang` v2 (`charm.land/fang/v2` v2.0.1) | Replaces the hand-rolled `flag` tree in `internal/cli` with styled help/errors, `--version` with build metadata, shell completions and man pages. Four subcommands with 3-7 flags each justify it. Done (P2). |
+| `log` v2 (`charm.land/log/v2` v2.0.1) | One leveled logger for runner/CLI diagnostics, `--log-file`, `--verbose`, structured run events. Today diagnostics are scattered `fmt.Fprintf(deps.Stderr, ...)` calls. Done (P2). |
+| `tone` (`charm.land/tone` v0.2.0) | Real palette tokens for `internal/style` instead of raw 256-color indexes. Replaces the deprecated `x/exp/charmtone`. Done (P2). |
 | `vhs` + `vhs-action` | Tape-driven demo GIFs in the README (timings edit, bench, burn-in). The README already has one screenshot and no recording. |
 
 **Adopt later, on a branch (bigger bite, less urgent).**
@@ -66,7 +68,7 @@ All 57 repos returned by `GET /orgs/charmbracelet/repos` (Nov 2026), plus the
 | `x/cellbuf` | v0.0.15 | transitive | keep (v2 replaces it internally) |
 | `x/term` | v0.2.2 | transitive | keep |
 | `ultraviolet` | pseudo | transitive | do not import |
-| `x/exp/charmtone` | v0.1.1 | no | **P2** theme palette |
+| `tone` (`charm.land/tone`) | v0.2.0 | no | done (P2); `x/exp/charmtone` is deprecated in its favour |
 
 ### 2.2 Components and CLI
 
@@ -79,8 +81,8 @@ All 57 repos returned by `GET /orgs/charmbracelet/repos` (Nov 2026), plus the
 | `bubbles/help`, `key` | via v2.2.1 | `key` already used; keep the custom scrollable help overlay |
 | `bubbles/textarea` | via v2.2.1 | **P3** job file editor (today job files are read-only, set by `--job`) |
 | `bubbles/spinner`, `stopwatch`, `timer`, `paginator`, `cursor` | via v2.2.1 | no: spinner is derived from the app's elapsed tick on purpose |
-| `fang` → `charm.land/fang/v2` | v2.0.1 | **P2** CLI front end (cobra/pflag) |
-| `log` → `charm.land/log/v2` | v2.0.1 | **P2** diagnostics, `--log-file`, structured run events |
+| `fang` → `charm.land/fang/v2` | v2.0.1 | done: cobra tree, styled help/errors, completions, man pages |
+| `log` → `charm.land/log/v2` | v2.0.1 | done: `--log-file`, `-v`/`-q`, structured run events |
 | `charm` (tool + library) | v0.x | no: wraps fang for a different set of conveniences |
 | `huh` → `charm.land/huh/v2` | v2.0.3 | deferred; first-run wizard only |
 | `glamour` → `charm.land/glamour/v2` | v2.0.1 | **P4** `report` command, docs pane |
@@ -112,7 +114,7 @@ All 57 repos returned by `GET /orgs/charmbracelet/repos` (Nov 2026), plus the
 | `x/editor` | **P4** `$EDITOR` for job files |
 | `x/exp/teatest` | no: v1-only |
 | `x/exp/golden` | no: `internal/uitest` covers it |
-| `x/exp/charmtone` | **P2** palette |
+| `x/exp/charmtone` | deprecated: use `charm.land/tone` |
 | `x/exp/ordered`, `x/exp/slice`, `x/exp/strings`, `x/exp/maps` | only if a helper is genuinely missing |
 | `x/json`, `x/etag`, `x/vcr`, `x/vt`, `x/mosaic`, `x/pony`, `x/nerdfont`, `x/termios`, `x/conpty`, `x/input`, `x/powernap`, `x/wcwidth`, `x/paths`-style helpers | no |
 
@@ -187,31 +189,54 @@ Deliberately deferred to P3 (not "cheap" after all):
 - Paste into the profile prompts already works for free (`tea.PasteMsg` reaches
   the text input), so no code was needed.
 
-### P2 — CLI: fang v2 + log v2 + charmtone (1-2 days)
+### P2 — CLI: fang v2 + log v2 + tone (1-2 days) — **done**
 
-- Replace the `flag.FlagSet` tree in `internal/cli/{cli,tui,info,bench,burnin}.go`
-  with one cobra root and four subcommands inside `internal/cli/root.go`, executed
-  via `fang.Execute(ctx, root, fang.WithVersion(...), fang.WithTheme(...))`.
-- Keep the tested `Run(args []string, deps Deps) int` seam and `Deps` injection;
-  `RunE` returns a typed `exitError{code}` that `Run` maps to `ExitOK/Failed/Usage/Sigint`.
-- **Flag compatibility shim** (`normalizeArgs`): rewrite documented single-dash
-  flags (`-json`, `-imc`, `-out`, `-duration`, `-buffer`, `-workers`, `-preset`,
-  `-job`, `-tab`, `-state-dir`, `-no-color`, `-mouse`, `-dark`, `-version`) to
-  `--long` before pflag sees them. Golden-test the rewriter. README keeps
-  `-json` working and documents `--json` as canonical.
-- Swap CLI diagnostics to `charm.land/log/v2` writing to `deps.Stderr`; add
-  `--log-file PATH`, `--verbose/-v`, `--quiet/-q`. Runner start/finish events get
-  structured fields (`kind`, `duration`, `exit_code`, `log_path`).
-- Keep the contract: stdout carries exactly one JSON document under `-json`;
-  add a test that asserts that with logging enabled at debug level.
-- `internal/style`: source tokens from `x/exp/charmtone` (keep the semantic role
-  names; only the values change).
-- Free wins: `mem-station completion {bash,zsh,fish,powershell}` and
-  `mem-station man` from fang/mango.
+Landed in the `cli: …` commit. Modules added: `charm.land/fang/v2 v2.0.1`,
+`charm.land/log/v2 v2.0.1`, `charm.land/tone v0.2.0`.
 
-Acceptance: `mem-station help`, `mem-station bench --help`, bad-flag errors and
-`--version` are styled and exit correctly; all existing `cli_test.go` cases pass
-unchanged; new tests cover the shim, log levels and stdout purity.
+What landed, versus the estimate:
+
+- **cobra + fang**: `internal/cli/cli.go` builds the tree (root, `tui`, `info`,
+  `bench`, `burnin`, `version`) and runs it through `fang.Execute`. The root
+  command keeps the launcher flags, so `mem-station --tab=burn-in` and
+  `mem-station tui --tab=burn-in` behave the same. `internal/cli/root.go` was not
+  needed; the tree lives next to `Run`.
+- **Exit codes**: `Run(args, deps) int` and the `Deps` injection are unchanged.
+  Commands return a typed `exitError{code, err, silent}`: `usageErr` → 2,
+  `fail` → 1 with fang printing the message, and `exitCodeErr(runCode)` → a
+  silent 1/130 because stdout already carries the verdict. Any other error from
+  cobra (unknown command, unknown flag, wrong arg count) maps to 2.
+- **Flag shim**: `normalizeArgs` rewrites the documented single-dash long flags
+  (`-json`, `-duration`, `-out`, `-preset`, `-job`, `-tab`, `-no-color`, ...) to
+  `--long` before pflag parses. Shorthands (`-v`, `-q`, `-h`), `--`-prefixed
+  flags and everything after a bare `--` are untouched. Unit-tested, and the
+  end-to-end test asserts `-json` and `--json` produce byte-identical output.
+- **log v2**: `Deps.Log` is a leveled logger on stderr with the `mem-station`
+  prefix. `--log-file` tees stderr to a `0600` file (opened by
+  `PersistentPreRunE`, closed by `Run`), `-v` selects debug, `-q` errors only.
+  Bench/burn-in start and finish log structured fields (`duration`, `exit_code`,
+  `read_mbs`, `log`). The stdout contract is unchanged: `-json -v` still writes
+  exactly one JSON document, which is now covered by a test.
+- **tone, not charmtone**: `github.com/charmbracelet/x/exp/charmtone` is
+  deprecated in favour of `charm.land/tone`. Every theme token is now a
+  `tone.Key` (which satisfies `color.Color`), so the TUI renders truecolor and
+  Bubble Tea downsamples to the terminal profile. The `solid()` 256-color helper
+  is gone.
+- **Free wins**: `mem-station completion {bash,zsh,fish,powershell}`,
+  `mem-station man`, per-command `--help`, and `mem-station version`.
+
+Two intentional behaviour changes, both worth knowing before reviewing a diff:
+
+1. Help output is fang's (`USAGE`, `COMMANDS`, `FLAGS`), not the hand-written
+   block. The test assertion moved from the literal `Usage:` to a
+   case-insensitive match.
+2. fang capitalizes the first word of an error, so `cli_test.go` asserts wording
+   case-insensitively (`containsFold`) rather than exact lowercase.
+
+Verified: `make check`/`race`/`integration` green; a pty run paints with tone
+colors (`#f7f6fb`, `#a2a0ad`, `#8b75ff`), `--tab=burn-in` opens the burn-in tab,
+`-json -v --log-file` keeps stdout pure and writes the trace to both stderr and
+the file, and `-q` suppresses a missing-job warning.
 
 ### P3 — Components: profile list, filepicker, history table, job editor (3-4 days)
 
@@ -301,10 +326,9 @@ Already covered by P1, so the manual matrix no longer needs to prove it:
 
 ## 5. Recommended next slice
 
-P0 and P1 are done. Next is **P2 (fang v2 + log v2 + charmtone)**: it needs no
-rendering changes and is the highest visible-value CLI work left. P3's first
-sliver should be the overlay compositor, since it is the one v2 feature the
-migration had to leave on the table.
+P0, P1 and P2 are done. Next is **P3**, starting with the overlay compositor
+(the one v2 feature the migration had to leave on the table), then the profile
+`list` and `filepicker` components.
 
 ---
 

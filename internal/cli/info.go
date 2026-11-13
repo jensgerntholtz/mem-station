@@ -7,6 +7,8 @@ import (
 
 	"mem-station/internal/memory"
 	"mem-station/internal/ui"
+
+	"github.com/spf13/cobra"
 )
 
 // infoDocument is the stable JSON document `info -json` prints.
@@ -34,22 +36,38 @@ var infoKeys = []string{
 	"DRAM Voltage",
 }
 
-// runInfo prints detected hardware values, SPD details, and the IMC dump.
-func runInfo(deps Deps, args []string) int {
-	fs := newFlagSet("info", deps)
-	asJSON := fs.Bool("json", false, "print one JSON object on stdout")
-	withIMC := fs.Bool("imc", false, "read raw IMC registers (root; may need iomem=relaxed)")
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
-	}
-	if fs.NArg() > 0 {
-		fmt.Fprintf(deps.Stderr, "mem-station info: unexpected argument %q\n", fs.Arg(0))
-		return ExitUsage
-	}
+// infoOptions are the flags of the info command.
+type infoOptions struct {
+	asJSON  bool
+	withIMC bool
+}
 
+// newInfoCmd builds the info subcommand.
+func newInfoCmd(deps Deps) *cobra.Command {
+	var opts infoOptions
+	cmd := &cobra.Command{
+		Use:   "info",
+		Short: "Print detected hardware values",
+		Long: `Print detected hardware values, SPD details, and the IMC register dump.
+
+Detection needs root for dmidecode/decode-dimms; raw IMC registers need root and
+may need iomem=relaxed on the kernel command line.`,
+		Args: cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return runInfo(deps, opts)
+		},
+	}
+	cmd.Flags().BoolVar(&opts.asJSON, "json", false, "print one JSON object on stdout")
+	cmd.Flags().BoolVar(&opts.withIMC, "imc", false, "read raw IMC registers (root; may need iomem=relaxed)")
+	return cmd
+}
+
+// runInfo prints detected hardware values, SPD details, and the IMC dump.
+func runInfo(deps Deps, opts infoOptions) error {
 	values, msg, spd := deps.Detect()
+	deps.Log.Debug("detection finished", "values", len(values), "spd", spd != nil)
 	doc := infoDocument{Values: values, Message: msg, SPD: spd}
-	if *withIMC {
+	if opts.withIMC {
 		timings, imcErr := deps.ReadIMC()
 		doc.IMC = timings
 		if imcErr != nil {
@@ -58,16 +76,15 @@ func runInfo(deps Deps, args []string) int {
 	} else {
 		doc.IMCError = "not requested (pass -imc to read raw registers; needs root and may need iomem=relaxed)"
 	}
-	if *asJSON {
+	if opts.asJSON {
 		if err := writeJSON(deps.Stdout, doc); err != nil {
-			fmt.Fprintln(deps.Stderr, "mem-station info:", err)
-			return ExitFailed
+			return fail(err)
 		}
-		return ExitOK
+		return nil
 	}
 
 	printInfoHuman(deps, doc)
-	return ExitOK
+	return nil
 }
 
 // printInfoHuman renders the detection result for a terminal.

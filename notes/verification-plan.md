@@ -94,6 +94,18 @@ Expected:
   - Bracketed paste into the timing editor and the profile path prompts.
   - `--mouse` wheel scrolling, `--no-color`, and `NO_COLOR=1`.
   - Alt screen is entered and restored on quit; the window title is set.
+- Command line (fang/cobra/log v2), automated where possible:
+  - `mem-station help`, `mem-station <cmd> --help`, `mem-station version`,
+    `mem-station --version`, `mem-station completion bash`, `mem-station man`.
+  - The documented single-dash flags still work and match their double-dash
+    form: `info -json -imc` must print the same document as
+    `info --json --imc` (covered by a test).
+  - `-json -v` keeps stdout to exactly one JSON document while the debug trace
+    goes to stderr.
+  - `--log-file PATH` appends the same diagnostics to a `0600` file; `-q`
+    suppresses warnings such as an unreadable configured job file.
+  - Exit codes: unknown command or flag → `2`; a failed bench/burn-in → `1`
+    with the verdict on stdout and no extra error banner; `130` on interrupt.
 
 CI (`.github/workflows/ci.yml`) runs gofmt, `go vet ./...`, `go build ./...`,
 and `go test ./... -count=1` on `ubuntu-latest`. CI does not run hardware, the

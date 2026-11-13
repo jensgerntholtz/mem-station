@@ -29,35 +29,17 @@ func parseTab(s string) (int, error) {
 	return 0, fmt.Errorf("unknown tab %q (use timings, benchmark, burn-in, or 0-2)", s)
 }
 
-// runTUI parses the TUI flags and launches the interactive program.
-func runTUI(deps Deps, args []string) int {
-	fs := newFlagSet("tui", deps)
-	tab := fs.String("tab", "timings", "initial tab: timings, benchmark, burn-in (or 0-2)")
-	dark := fs.Bool("dark", true, "use the dark theme (pass --dark=false for light)")
-	noColor := fs.Bool("no-color", false, "disable color output")
-	mouse := fs.Bool("mouse", false, "enable mouse wheel scrolling")
-	imc := fs.Bool("imc", false, "read raw IMC registers at startup (root; may need iomem=relaxed)")
-	stateDir := fs.String("state-dir", "", "state directory (overrides MEM_STATION_STATE_DIR)")
-	job := fs.String("job", "", "burn-in job file (overrides MEM_STATION_JOB)")
-	version := fs.Bool("version", false, "print the version and exit")
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
-	}
-	if fs.NArg() > 0 {
-		fmt.Fprintf(deps.Stderr, "mem-station: unexpected argument %q\n", fs.Arg(0))
-		return ExitUsage
-	}
-	if *version {
+// runTUI launches the interactive program from the launcher flags.
+func runTUI(deps Deps, o tuiOptions) error {
+	if o.version {
 		fmt.Fprintln(deps.Stdout, deps.Version)
-		return ExitOK
+		return nil
 	}
-
-	index, err := parseTab(*tab)
+	index, err := parseTab(o.tab)
 	if err != nil {
-		fmt.Fprintln(deps.Stderr, "mem-station:", err)
-		return ExitUsage
+		return usageErr(err)
 	}
-	if *noColor {
+	if o.noColor {
 		// Must happen before the program starts: Bubble Tea v2 detects the
 		// output color profile with colorprofile.Detect, which reads NO_COLOR.
 		style.UsePlainOutput()
@@ -65,18 +47,21 @@ func runTUI(deps Deps, args []string) int {
 
 	opts := app.DefaultOptions()
 	opts.InitialTab = index
-	opts.JobPath = *job
-	opts.StateDir = *stateDir
-	opts.Dark = *dark
-	opts.Mouse = *mouse
-	opts.IMC = *imc
+	opts.JobPath = o.job
+	opts.StateDir = o.stateDir
+	opts.Dark = o.dark
+	opts.Mouse = o.mouse
+	opts.IMC = o.imc
 	opts.Version = deps.Version
 
+	deps.Log.Debug("launching TUI",
+		"tab", index, "dark", opts.Dark, "mouse", opts.Mouse,
+		"imc", opts.IMC, "state_dir", opts.StateDir, "job", opts.JobPath)
+
 	if err := deps.RunTUI(opts); err != nil {
-		fmt.Fprintln(deps.Stderr, "mem-station:", err)
-		return ExitFailed
+		return fail(err)
 	}
-	return ExitOK
+	return nil
 }
 
 // runTUIProgram starts the Bubble Tea program. It is the production RunTUI

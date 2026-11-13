@@ -116,6 +116,13 @@ func finishedEvent(exitCode int, err error) runner.Event {
 	return runner.Event{Type: runner.EventFinished, At: testStart.Add(15 * time.Second), ExitCode: exitCode, Err: err}
 }
 
+// containsFold reports whether s contains substr, ignoring case. fang
+// capitalizes the first word of an error message, so assertions about the
+// wording are case-insensitive.
+func containsFold(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
 // testDeps builds CLI dependencies with captured streams and an isolated state
 // directory.
 func testDeps(t *testing.T, jobs *fakeRunner) (Deps, *bytes.Buffer, *bytes.Buffer) {
@@ -154,7 +161,7 @@ func TestRunDispatchesCommands(t *testing.T) {
 	if code := Run([]string{"help"}, deps); code != ExitOK {
 		t.Errorf("help exit = %d, want %d", code, ExitOK)
 	}
-	if !strings.Contains(stdout.String(), "Usage:") {
+	if !containsFold(stdout.String(), "usage") {
 		t.Errorf("help output missing usage:\n%s", stdout.String())
 	}
 
@@ -163,7 +170,7 @@ func TestRunDispatchesCommands(t *testing.T) {
 	if code := Run([]string{"nonsense"}, deps); code != ExitUsage {
 		t.Errorf("unknown command exit = %d, want %d", code, ExitUsage)
 	}
-	if !strings.Contains(stderr.String(), "unknown command") {
+	if !containsFold(stderr.String(), "unknown command") {
 		t.Errorf("stderr = %q, want an unknown-command error", stderr.String())
 	}
 	if stdout.Len() != 0 {
@@ -238,7 +245,7 @@ func TestRunTUIVersionAndBadTab(t *testing.T) {
 	if code := Run([]string{"tui", "--tab=nope"}, deps); code != ExitUsage {
 		t.Errorf("bad --tab exit = %d, want %d", code, ExitUsage)
 	}
-	if !strings.Contains(stderr.String(), "unknown tab") {
+	if !containsFold(stderr.String(), "unknown tab") {
 		t.Errorf("stderr = %q, want an unknown-tab error", stderr.String())
 	}
 }
@@ -539,7 +546,7 @@ func TestBurninUnknownPreset(t *testing.T) {
 	if code := Run([]string{"burnin", "-preset", "nope"}, deps); code != ExitUsage {
 		t.Fatalf("exit = %d, want %d", code, ExitUsage)
 	}
-	if !strings.Contains(stderr.String(), "unknown preset") {
+	if !containsFold(stderr.String(), "unknown preset") {
 		t.Errorf("stderr = %q, want an unknown-preset error", stderr.String())
 	}
 	if stdout.Len() != 0 {
@@ -547,5 +554,115 @@ func TestBurninUnknownPreset(t *testing.T) {
 	}
 	if len(jobs.specs) != 0 {
 		t.Error("a job was launched for an unknown preset")
+	}
+}
+
+// TestNormalizeArgs checks the documented single-dash flags are rewritten for
+// pflag without touching shorthands, unknown flags, or a bare "--" tail.
+func TestNormalizeArgs(t *testing.T) {
+	cases := []struct {
+		in   []string
+		want []string
+	}{
+		{[]string{"bench", "-json"}, []string{"bench", "--json"}},
+		{[]string{"-duration", "15s"}, []string{"--duration", "15s"}},
+		{[]string{"-json=false"}, []string{"--json=false"}},
+		{[]string{"-out=/tmp/x"}, []string{"--out=/tmp/x"}},
+		{[]string{"--json"}, []string{"--json"}},
+		{[]string{"-v"}, []string{"-v"}},
+		{[]string{"-q"}, []string{"-q"}},
+		{[]string{"-h"}, []string{"-h"}},
+		{[]string{"-unknown"}, []string{"-unknown"}},
+		{[]string{"info", "--", "-json"}, []string{"info", "--", "-json"}},
+	}
+	for _, tc := range cases {
+		if got := normalizeArgs(tc.in); strings.Join(got, " ") != strings.Join(tc.want, " ") {
+			t.Errorf("normalizeArgs(%v) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestDoubleDashFlagsMatchSingleDash checks the canonical pflag form produces
+// the same document as the documented single-dash form.
+func TestDoubleDashFlagsMatchSingleDash(t *testing.T) {
+	jobs := &fakeRunner{}
+	deps, stdout, stderr := testDeps(t, jobs)
+	if code := Run([]string{"info", "-json", "-imc"}, deps); code != ExitOK {
+		t.Fatalf("single-dash exit = %d (stderr: %s)", code, stderr.String())
+	}
+	single := stdout.String()
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"info", "--json", "--imc"}, deps); code != ExitOK {
+		t.Fatalf("double-dash exit = %d (stderr: %s)", code, stderr.String())
+	}
+	if stdout.String() != single {
+		t.Errorf("--json differs from -json:\n%s\n---\n%s", stdout.String(), single)
+	}
+}
+
+// TestLogFileCapturesDiagnostics checks --log-file plus -v keep stdout pure
+// while the debug trace lands in the file and on stderr.
+func TestLogFileCapturesDiagnostics(t *testing.T) {
+	jobs := &fakeRunner{script: []runner.Event{
+		startedEvent(),
+		outputEvent("memrate: read rate 21400.00 MB per sec"),
+		finishedEvent(0, nil),
+	}}
+	deps, stdout, stderr := testDeps(t, jobs)
+	path := filepath.Join(t.TempDir(), "diag.log")
+
+	code := Run([]string{
+		"bench", "-duration", "15s", "-json", "--log-file", path, "-v",
+	}, deps)
+	if code != ExitOK {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitOK, stderr.String())
+	}
+
+	// stdout is still exactly one JSON document, even with debug logging on.
+	var doc benchmark.Export
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, stdout.String())
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	for _, want := range []string{"starting benchmark", "benchmark finished"} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("log file missing %q:\n%s", want, data)
+		}
+	}
+	if !strings.Contains(stderr.String(), "starting benchmark") {
+		t.Errorf("stderr missing the debug trace:\n%s", stderr.String())
+	}
+}
+
+// TestQuietSuppressesWarnings checks -q keeps a non-error diagnostic out of
+// stderr without changing the exit code or the result.
+func TestQuietSuppressesWarnings(t *testing.T) {
+	jobs := &fakeRunner{script: []runner.Event{
+		startedEvent(),
+		outputEvent("stress-ng: info: completed in 5.00 secs"),
+		finishedEvent(0, nil),
+	}}
+	deps, _, stderr := testDeps(t, jobs)
+	missing := filepath.Join(t.TempDir(), "missing.job")
+
+	if code := Run([]string{"burnin", "-duration", "5m", "-json", "-job", missing}, deps); code != ExitOK {
+		t.Fatalf("exit = %d, want %d (stderr: %s)", code, ExitOK, stderr.String())
+	}
+	if !containsFold(stderr.String(), "unavailable") {
+		t.Fatalf("stderr = %q, want the missing-job warning", stderr.String())
+	}
+
+	stderr.Reset()
+	if code := Run([]string{"burnin", "-duration", "5m", "-json", "-job", missing, "-q"}, deps); code != ExitOK {
+		t.Fatalf("quiet exit = %d, want %d (stderr: %s)", code, ExitOK, stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want nothing with -q", stderr.String())
 	}
 }

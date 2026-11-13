@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"charm.land/lipgloss/v2"
+	"charm.land/tone"
 )
 
 // Theme is the semantic token set used by the app shell and shared UI helpers.
@@ -49,57 +50,57 @@ type Theme struct {
 func Default(dark bool) Theme {
 	if dark {
 		return Theme{
-			Bg:            solid("234"),
-			Fg:            solid("230"),
-			Muted:         solid("245"),
-			Accent:        solid("111"),
-			AccentBg:      solid("62"),
-			Border:        solid("60"),
-			BorderFocus:   solid("111"),
-			Success:       solid("42"),
-			Warning:       solid("220"),
-			Danger:        solid("196"),
-			Info:          solid("153"),
-			Label:         solid("109"),
-			Value:         solid("230"),
-			Dim:           solid("102"),
-			TabActiveFg:   solid("230"),
-			TabActiveBg:   solid("62"),
-			TabInactiveFg: solid("245"),
-			TabInactiveBg: solid("238"),
-			ButtonFg:      solid("230"),
-			ButtonBg:      solid("62"),
-			ButtonFocusFg: solid("230"),
-			ButtonFocusBg: solid("28"),
-			StatusFg:      solid("220"),
-			ErrorBg:       solid("52"),
+			Bg:            tone.Pepper,
+			Fg:            tone.Salt,
+			Muted:         tone.Steam,
+			Accent:        tone.Hazy,
+			AccentBg:      tone.Darple,
+			Border:        tone.Oyster,
+			BorderFocus:   tone.Hazy,
+			Success:       tone.Guac,
+			Warning:       tone.Mustard,
+			Danger:        tone.Sriracha,
+			Info:          tone.Sardine,
+			Label:         tone.Anchovy,
+			Value:         tone.Salt,
+			Dim:           tone.Squid,
+			TabActiveFg:   tone.Salt,
+			TabActiveBg:   tone.Darple,
+			TabInactiveFg: tone.Steam,
+			TabInactiveBg: tone.Char,
+			ButtonFg:      tone.Salt,
+			ButtonBg:      tone.Darple,
+			ButtonFocusFg: tone.Pepper,
+			ButtonFocusBg: tone.Guac,
+			StatusFg:      tone.Mustard,
+			ErrorBg:       tone.Toast,
 		}
 	}
 	return Theme{
-		Bg:            solid("231"),
-		Fg:            solid("16"),
-		Muted:         solid("240"),
-		Accent:        solid("25"),
-		AccentBg:      solid("39"),
-		Border:        solid("250"),
-		BorderFocus:   solid("25"),
-		Success:       solid("28"),
-		Warning:       solid("172"),
-		Danger:        solid("160"),
-		Info:          solid("24"),
-		Label:         solid("24"),
-		Value:         solid("16"),
-		Dim:           solid("244"),
-		TabActiveFg:   solid("231"),
-		TabActiveBg:   solid("25"),
-		TabInactiveFg: solid("240"),
-		TabInactiveBg: solid("253"),
-		ButtonFg:      solid("231"),
-		ButtonBg:      solid("25"),
-		ButtonFocusFg: solid("231"),
-		ButtonFocusBg: solid("28"),
-		StatusFg:      solid("166"),
-		ErrorBg:       solid("224"),
+		Bg:            tone.Salt,
+		Fg:            tone.Pepper,
+		Muted:         tone.Oyster,
+		Accent:        tone.Darple,
+		AccentBg:      tone.Charple,
+		Border:        tone.Steep,
+		BorderFocus:   tone.Darple,
+		Success:       tone.Pickle,
+		Warning:       tone.Tandoor,
+		Danger:        tone.Pom,
+		Info:          tone.Oceania,
+		Label:         tone.Oceania,
+		Value:         tone.Pepper,
+		Dim:           tone.Squid,
+		TabActiveFg:   tone.Salt,
+		TabActiveBg:   tone.Darple,
+		TabInactiveFg: tone.Oyster,
+		TabInactiveBg: tone.Soda,
+		ButtonFg:      tone.Salt,
+		ButtonBg:      tone.Darple,
+		ButtonFocusFg: tone.Salt,
+		ButtonFocusBg: tone.Pickle,
+		StatusFg:      tone.Tandoor,
+		ErrorBg:       tone.Sakura,
 	}
 }
 
@@ -250,11 +251,4 @@ func TabInactive() lipgloss.Style {
 		Foreground(t.TabInactiveFg).
 		Background(t.TabInactiveBg).
 		Padding(0, 2)
-}
-
-// solid turns a 256-color index or hex value into the concrete color used for
-// both light and dark terminals. The --dark flag picks the palette, so a token
-// does not need to be adaptive.
-func solid(c string) color.Color {
-	return lipgloss.Color(c)
 }
