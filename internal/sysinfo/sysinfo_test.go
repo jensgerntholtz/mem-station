@@ -531,6 +531,27 @@ func promptModel(t *testing.T, m *Model, key tea.KeyPressMsg, value string) {
 	}
 }
 
+// pickProfile opens the load picker, highlights name, and confirms it.
+func pickProfile(t *testing.T, m *Model, name string) {
+	t.Helper()
+	m.Update(uitest.Ctrl('l'))
+	if !m.ModalOpen() || m.modal != modalLoadProfile {
+		t.Fatalf("ctrl+l did not open the profile picker (modal %v)", m.modal)
+	}
+	index := -1
+	for i, item := range m.picker.Items() {
+		if profile, ok := item.(profileItem); ok && profile.name == name {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		t.Fatalf("profile %q is not in the picker: %v", name, m.picker.Items())
+	}
+	m.picker.Select(index)
+	m.Update(uitest.Code(tea.KeyEnter))
+}
+
 // TestSaveNamedProfileFromDraft saves the draft under a name without touching
 // the active profile.
 func TestSaveNamedProfileFromDraft(t *testing.T) {
@@ -565,8 +586,7 @@ func TestLoadNamedProfileIntoDraft(t *testing.T) {
 		t.Fatalf("SaveNamedProfile: %v", err)
 	}
 
-	promptModel(t, m, uitest.Ctrl('l'), "undervolt")
-	m.Update(uitest.Code(tea.KeyEnter))
+	pickProfile(t, m, "undervolt")
 
 	if got := m.draft[FieldFreq]; got != "2933" {
 		t.Errorf("draft frequency = %q, want 2933", got)
@@ -791,5 +811,48 @@ func TestArrowNavigationStillMovesFocus(t *testing.T) {
 	m.Update(uitest.Code(tea.KeyUp))
 	if m.focus != 0 {
 		t.Errorf("↑ moved focus to %d, want 0", m.focus)
+	}
+}
+
+// TestProfilePickerClosesWithoutQuitting checks q and esc close the picker and
+// that the list's own quit binding can never take the program down.
+func TestProfilePickerClosesWithoutQuitting(t *testing.T) {
+	m := detectedModel(t)
+	if err := store.SaveNamedProfile(config.Profile{Name: "stock"}); err != nil {
+		t.Fatalf("SaveNamedProfile: %v", err)
+	}
+
+	for _, key := range []tea.KeyPressMsg{uitest.Key("q"), uitest.Code(tea.KeyEsc)} {
+		m.Update(uitest.Ctrl('l'))
+		if !m.ModalOpen() {
+			t.Fatalf("%v: ctrl+l did not open the picker", key)
+		}
+		cmd := m.Update(key)
+		if m.ModalOpen() {
+			t.Errorf("%v did not close the picker", key)
+		}
+		if cmd == nil {
+			continue
+		}
+		if _, quit := cmd().(tea.QuitMsg); quit {
+			t.Errorf("%v from the picker asked the program to quit", key)
+		}
+	}
+}
+
+// TestProfilePickerEmptyState checks opening the picker with no saved profiles
+// is not an error and confirming loads nothing.
+func TestProfilePickerEmptyState(t *testing.T) {
+	m := detectedModel(t)
+	m.Update(uitest.Ctrl('l'))
+	if !m.ModalOpen() {
+		t.Fatal("ctrl+l did not open the picker")
+	}
+	if got := len(m.picker.Items()); got != 0 {
+		t.Fatalf("picker items = %d, want none", got)
+	}
+	m.Update(uitest.Code(tea.KeyEnter))
+	if m.Dirty() {
+		t.Error("confirming an empty picker changed the draft")
 	}
 }

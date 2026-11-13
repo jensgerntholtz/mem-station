@@ -3,7 +3,9 @@ package app
 import (
 	"testing"
 
+	"mem-station/internal/config"
 	"mem-station/internal/memory"
+	"mem-station/internal/store"
 	"mem-station/internal/uitest"
 
 	tea "charm.land/bubbletea/v2"
@@ -71,6 +73,14 @@ func TestGoldenShellViews(t *testing.T) {
 		}},
 		{name: "profile_prompt_118x37", w: 120, h: 40, run: func(m *Model) {
 			m.Update(uitest.Ctrl('p'))
+		}},
+		{name: "profile_picker_118x37", w: 120, h: 40, run: func(m *Model) {
+			for _, name := range []string{"daily-3200", "undervolt", "stock"} {
+				if err := store.SaveNamedProfile(config.Profile{Name: name}); err != nil {
+					t.Fatalf("SaveNamedProfile(%q): %v", name, err)
+				}
+			}
+			m.Update(uitest.Ctrl('l'))
 		}},
 		{name: "toosmall_68x18", w: 70, h: 20},
 	}

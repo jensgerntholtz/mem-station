@@ -421,8 +421,12 @@ func (m *Model) openApply() tea.Cmd {
 }
 
 // updateModal routes messages while a modal owns the input: the apply review
-// confirms on enter, the profile prompts additionally forward typing.
+// confirms on enter, the load picker is driven by its list, and the profile
+// prompts additionally forward typing.
 func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
+	if m.modal == modalLoadProfile {
+		return m.updatePicker(msg)
+	}
 	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		if m.modal.prompt() {
@@ -474,21 +478,12 @@ func (m *Model) openSaveProfile() tea.Cmd {
 	return nil
 }
 
-// openLoadProfile prompts for the name of a saved profile. The hint lists what
-// is available so the tab can be driven without guessing.
+// openLoadProfile opens the saved-profile picker. The list is rebuilt on every
+// open so a profile saved or imported since the last time shows up.
 func (m *Model) openLoadProfile() tea.Cmd {
 	m.commitEdit()
-	names, err := store.ListProfiles()
-	hint := "name of a saved profile"
-	switch {
-	case err != nil:
-		hint = "profile list unavailable: " + err.Error()
-	case len(names) == 0:
-		hint = "no saved profiles yet - ctrl+p saves the draft"
-	default:
-		hint = "saved: " + strings.Join(names, ", ")
-	}
-	m.openPrompt(modalLoadProfile, "", hint)
+	m.refreshProfiles()
+	m.modal = modalLoadProfile
 	return nil
 }
 

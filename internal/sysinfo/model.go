@@ -19,6 +19,7 @@ import (
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
 
+	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -74,11 +75,11 @@ func (s modalState) Title() string {
 	}
 }
 
-// prompt reports whether the modal asks for a typed value instead of a yes/no
-// decision.
+// prompt reports whether the modal asks for a typed value instead of a
+// list/yes-no decision. The load modal is a picker, not a prompt.
 func (s modalState) prompt() bool {
 	switch s {
-	case modalSaveProfile, modalLoadProfile, modalExportProfile, modalImportProfile:
+	case modalSaveProfile, modalExportProfile, modalImportProfile:
 		return true
 	}
 	return false
@@ -114,6 +115,11 @@ type Model struct {
 	prompt     textinput.Model
 	promptHint string
 	promptErr  string
+
+	// picker is the saved-profile list shown by ctrl+l; it shares the modal
+	// state with the prompt dialogs but owns its own input handling.
+	picker    list.Model
+	pickerErr string
 
 	keys KeyMap
 }
@@ -153,6 +159,7 @@ func New() *Model {
 		imcNote:    "Raw MCHBAR registers are opt-in; press I to read them.",
 		spdVP:      viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
 		imcVP:      viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
+		picker:     newProfilePicker(),
 		keys:       DefaultKeyMap(),
 	}
 }
