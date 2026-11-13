@@ -1,68 +1,69 @@
+// Package burnin parses stress-ng burn-in output into a Results summary.
+//
+// It is a leaf package: it does not execute commands or write to stdout/stderr.
 package burnin
 
 import (
-	"bufio"
-	"bytes"
-	"context"
-	"fmt"
-	"os/exec"
+	"regexp"
+	"strings"
 )
 
-type BurnInResults struct {
-	Duration string
-	Errors   int
-	Success  bool
+// Results summarizes a finished burn-in run.
+type Results struct {
+	Duration  string // parsed from output; empty if unknown
+	Errors    int    // number of output lines that look like errors
+	ExitCode  int
+	LogPath   string // populated by the caller after parsing
+	RawOutput string // bounded to the last maxOutputLines lines
+	Success   bool   // exit code 0 and zero error lines and no runner error
 }
 
-func RunBurnInCmd() (*BurnInResults, error) {
-	cmd := exec.Command("stress-ng", "--job", "burnin-memory.job", "--log-file", "burnin.log")
+// maxOutputLines bounds the retained RawOutput.
+const maxOutputLines = 2000
 
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%v: %s", err, buf.String())
+var (
+	errorLineRe = regexp.MustCompile(`(?i)\b(error|errors|failed|failure|fatal|aborted|abort|segfault|out of memory)\b`)
+	durationRe  = regexp.MustCompile(`(?i)(?:successful run completed in|completed in)\s+([\d.]+\s*(?:secs?|seconds|mins?|minutes|hrs?|hours))`)
+	realTimeRe  = regexp.MustCompile(`(?i)real time\s+([\d.]+)\s*secs?`)
+)
+
+// ParseBurnInOutput parses a completed run. err is the runner's terminal error
+// (nil on success, non-nil on cancellation/exit error/lookup failure).
+func ParseBurnInOutput(output string, exitCode int, err error) *Results {
+	r := &Results{
+		ExitCode:  exitCode,
+		Errors:    countErrorLines(output),
+		RawOutput: tailLines(output, maxOutputLines),
 	}
-	return ParseBurnInOutput(buf.String()), nil
-}
-
-func ParseBurnInOutput(output string) *BurnInResults {
-	fmt.Println("Burn-in output:")
-	fmt.Println(output)
-
-	r := &BurnInResults{}
-
-	r.Success = true
-	r.Errors = 0
-	r.Duration = "30s"
+	r.Duration = parseDuration(output)
+	r.Success = (err == nil) && (exitCode == 0) && (r.Errors == 0)
 	return r
 }
 
-// StreamBurnInCmd runs the burn-in command and streams output lines via a callback.
-func StreamBurnInCmd(ctx context.Context, onLine func(string)) error {
-	cmd := exec.CommandContext(ctx, "stress-ng", "--job", "burnin-memory.job", "--log-file", "burnin.log")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	// Read both stdout and stderr
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			onLine(scanner.Text())
+func countErrorLines(output string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		if errorLineRe.MatchString(line) {
+			count++
 		}
-	}()
-	scanner := bufio.NewScanner(stderr)
-	for scanner.Scan() {
-		onLine(scanner.Text())
 	}
-	err = cmd.Wait()
-	return err
+	return count
+}
+
+func parseDuration(output string) string {
+	if m := durationRe.FindStringSubmatch(output); len(m) > 1 {
+		return strings.TrimSpace(m[1])
+	}
+	if m := realTimeRe.FindStringSubmatch(output); len(m) > 1 {
+		return strings.TrimSpace(m[1]) + " secs"
+	}
+	return ""
+}
+
+func tailLines(output string, n int) string {
+	lines := strings.Split(output, "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }

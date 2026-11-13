@@ -1,14 +1,22 @@
+// Package model is the temporary pre-shell Bubble Tea model for MemStation.
+// Phase 0 keeps the current layout working while removing the acute bugs and
+// wiring the runner/store scaffolding; the full app split happens in Phase 1.
 package model
 
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"mem-station/internal/bench"
 	"mem-station/internal/burnin"
 	"mem-station/internal/memory"
+	"mem-station/internal/runner"
+	"mem-station/internal/store"
 	"mem-station/internal/style"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -17,156 +25,528 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Benchmark runner: wraps bench.RunBenchmarkCmd for Bubbletea
-var runBenchmarkCmd tea.Cmd = func() tea.Msg {
-	results, err := bench.RunBenchmarkCmd()
-	return benchResultMsg{results: convertBenchResults(results), err: err}
+// Options configures the initial model.
+type Options struct {
+	JobPath string // --job flag value (empty means use env/defaults)
 }
 
-// Message for burn-in output
-type burnInOutputMsg string
+// --- Messages ---
 
-// Modified burn-in command to return both results and output
-var runBurnInCmd tea.Cmd = func() tea.Msg {
-	results, err := burnin.RunBurnInCmd()
-	var output string
-	if results != nil {
-		// If you want to capture the output, you need to add a RawOutput field to BurnInResults in burnin.go
-		// For now, just use Duration as a placeholder (replace with actual output)
-		output = results.Duration
-	}
-	if err != nil {
-		return burnInResultMsg{results: convertBurnInResults(results), err: err}
-	}
-	// Return both result and output
-	return burnInOutputMsg(output)
+// detectResultMsg carries the result of async hardware detection.
+type detectResultMsg struct {
+	vals map[string]string
+	msg  string
+	spd  *memory.SPDInfo
+	imc  []memory.IMCTimings
 }
 
-// Message for a single line of burn-in output
-type burnInOutputLineMsg string
+// detectCmd runs hardware detection off the UI thread.
+var detectCmd tea.Cmd = func() tea.Msg {
+	vals, msg, spd := memory.DetectDefaults()
+	imc, _ := memory.ReadMCHBARTimings() // tolerate failure (needs root)
+	return detectResultMsg{vals: vals, msg: msg, spd: spd, imc: imc}
+}
 
-// Live streaming burn-in command for Bubbletea
-var runBurnInStreamCmd tea.Cmd = func() tea.Msg {
+// jobEventMsg wraps a runner.Event for the Bubble Tea loop.
+type jobEventMsg struct {
+	ev runner.Event
+}
+
+// waitEventCmd blocks until the next runner event (or channel close) arrives.
+func waitEventCmd(ch <-chan runner.Event) tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithCancel(context.Background())
-
-		if cancel != nil {
-			defer cancel()
+		ev, ok := <-ch
+		if !ok {
+			return nil
 		}
-		// You may want to store cancel for later use (not shown here)
-		lines := make(chan string)
-		go func() {
-			_ = burnin.StreamBurnInCmd(ctx, func(line string) {
-				lines <- line
-			})
-			close(lines)
-		}()
-		for line := range lines {
-			return burnInOutputLineMsg(line)
+		return jobEventMsg{ev: ev}
+	}
+}
+
+// --- Types and Structs ---
+
+type timingField struct {
+	label string
+	hint  string
+	desc  string
+	input textinput.Model
+}
+
+type fieldBounds struct {
+	min, max float64
+	note     string
+	hasMin   bool
+	hasMax   bool
+}
+
+// focusTarget identifies what is selected for activation.
+type focusTarget int
+
+const (
+	focusField focusTarget = iota
+	focusApply
+	focusCancel
+)
+
+// Model is the root Bubble Tea model.
+type Model struct {
+	fields     []timingField
+	focusIndex int
+	focusType  focusTarget
+	editing    bool // a field is being edited (input focused) vs selected
+	editValue  string
+
+	lockRatios bool
+	width      int
+	height     int
+	status     string
+	activeTab  int
+
+	detecting bool
+
+	benchRunning bool
+	benchJob     *runner.Job
+	benchEvents  <-chan runner.Event
+	benchOutput  string
+	benchResults *bench.BenchResults
+
+	burnInRunning  bool
+	burnInJob      *runner.Job
+	burnInEvents   <-chan runner.Event
+	burnInOutput   string
+	burnInResults  *burnin.Results
+	burnInViewport viewport.Model
+
+	spd        *memory.SPDInfo
+	imcTimings []memory.IMCTimings
+
+	jobPath string
+}
+
+func newField(base textinput.Model, label, value, desc string) timingField {
+	in := base
+	in.SetValue(value)
+	in.Placeholder = value
+	return timingField{label: label, hint: value, desc: desc, input: in}
+}
+
+// InitialModel builds the model without blocking on hardware detection.
+func InitialModel(opts Options) Model {
+	baseInput := textinput.New()
+	baseInput.CharLimit = 8
+	baseInput.Width = 8
+
+	fields := []timingField{
+		newField(baseInput, "Channels", "2", "Detected memory channels."),
+		newField(baseInput, "DRAM Ratio", "?", "Memory multiplier relative to base clock."),
+		newField(baseInput, "DRAM Freq", "1600", "Effective DRAM frequency in MT/s."),
+		newField(baseInput, "CAS (tCL)", "?", "CAS latency cycles."),
+		newField(baseInput, "tRCD", "?", "RAS to CAS delay cycles."),
+		newField(baseInput, "tRP", "?", "Row precharge delay cycles."),
+		newField(baseInput, "tRAS", "?", "Active to precharge delay cycles."),
+		newField(baseInput, "Command Rate", "2T", "Command rate; usually 1T or 2T."),
+		newField(baseInput, "tRFC", "?", "Refresh cycle timing."),
+		newField(baseInput, "DRAM Voltage", "?", "Requested memory rail voltage."),
+	}
+
+	return Model{
+		fields:         fields,
+		focusIndex:     0,
+		focusType:      focusField,
+		lockRatios:     true,
+		width:          120,
+		height:         40,
+		status:         "Detecting hardware...",
+		detecting:      true,
+		burnInViewport: viewport.Model{},
+		jobPath:        opts.JobPath,
+	}
+}
+
+// Init kicks off async hardware detection.
+func (m Model) Init() tea.Cmd {
+	return detectCmd
+}
+
+/* --------------- Update --------------- */
+
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case detectResultMsg:
+		m.detecting = false
+		m.spd = msg.spd
+		m.imcTimings = msg.imc
+		m.applyDetected(msg.vals)
+		if len(msg.vals) == 0 {
+			m.status = msg.msg + " Press R to retry."
+		} else {
+			m.status = msg.msg + " | Tab/Shift+Tab to move, L toggles ratio lock."
 		}
-		return burnInResultMsg{results: nil, err: nil} // End of stream
+		return m, nil
+
+	case jobEventMsg:
+		return m.handleJobEvent(msg.ev)
+
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.resizeBurnInViewport()
+		return m, nil
+
+	case tea.KeyMsg:
+		if m.editing {
+			return m.handleEditingKey(msg)
+		}
+		return m.handleKey(msg)
+	}
+
+	// Non-key messages (e.g. textinput.Blink) reach the active input only
+	// while a field is being edited.
+	if m.editing && m.activeTab == 0 && m.focusType == focusField {
+		idx := m.focusIndex
+		before := m.fields[idx].input.Value()
+		updated, cmd := m.fields[idx].input.Update(msg)
+		m.fields[idx].input = updated
+		after := m.fields[idx].input.Value()
+		if m.fields[idx].label == "DRAM Freq" && before != after {
+			m.handleFrequencyEdit()
+		}
+		return m, cmd
+	}
+
+	return m, nil
+}
+
+func (m Model) handleEditingKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.fields[m.focusIndex].input.SetValue(m.editValue)
+		m.fields[m.focusIndex].input.Blur()
+		m.editing = false
+		m.status = "Edit cancelled."
+		return m, nil
+
+	case "enter":
+		m.commitFieldEdit()
+		return m, nil
+
+	case "tab":
+		m.commitFieldEdit()
+		m.moveFocus(1)
+		return m, nil
+
+	case "shift+tab":
+		m.commitFieldEdit()
+		m.moveFocus(-1)
+		return m, nil
+
+	case "ctrl+c":
+		return m, tea.Quit
+	}
+
+	idx := m.focusIndex
+	before := m.fields[idx].input.Value()
+	updated, cmd := m.fields[idx].input.Update(msg)
+	m.fields[idx].input = updated
+	after := m.fields[idx].input.Value()
+	if m.fields[idx].label == "DRAM Freq" && before != after {
+		m.handleFrequencyEdit()
+	}
+	return m, cmd
+}
+
+func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "ctrl+c", "q":
+		m.cancelJobs()
+		return m, tea.Quit
+
+	case "r", "R":
+		m.detecting = true
+		m.status = "Detecting hardware..."
+		return m, detectCmd
+
+	case "f1":
+		return m.switchTab(0)
+	case "f2":
+		return m.switchTab(1)
+	case "f3":
+		return m.switchTab(2)
+
+	case "l":
+		if m.activeTab == 0 {
+			m.lockRatios = !m.lockRatios
+			if m.lockRatios {
+				m.status = "Ratio lock enabled. Frequency edits auto-scale primary timings."
+			} else {
+				m.status = "Ratio lock disabled. Timings can be tuned independently."
+			}
+		}
+		return m, nil
+
+	case "tab":
+		if m.activeTab == 0 {
+			m.moveFocus(1)
+		}
+		return m, nil
+
+	case "shift+tab":
+		if m.activeTab == 0 {
+			m.moveFocus(-1)
+		}
+		return m, nil
+
+	case "esc":
+		if m.activeTab == 0 {
+			m.resetValues()
+			m.status = "Changes canceled."
+		}
+		return m, nil
+
+	case "enter":
+		switch m.activeTab {
+		case 1:
+			return m.startBenchmark()
+		case 2:
+			return m.startBurnIn()
+		}
+
+		// System info tab: selected field / apply / cancel.
+		switch m.focusType {
+		case focusField:
+			m.editing = true
+			m.editValue = m.fields[m.focusIndex].input.Value()
+			cmd := m.fields[m.focusIndex].input.Focus()
+			return m, cmd
+		case focusApply:
+			m.status = "Profile only - not written to hardware. (Apply flow arrives in Phase 2.)"
+			return m, nil
+		case focusCancel:
+			m.resetValues()
+			m.status = "Changes canceled."
+			return m, nil
+		}
+	}
+
+	return m, nil
+}
+
+func (m Model) handleJobEvent(ev runner.Event) (tea.Model, tea.Cmd) {
+	switch ev.Kind {
+	case runner.KindBenchmark:
+		return m.handleBenchEvent(ev)
+	case runner.KindBurnIn:
+		return m.handleBurnInEvent(ev)
+	}
+	return m, nil
+}
+
+func (m Model) handleBenchEvent(ev runner.Event) (tea.Model, tea.Cmd) {
+	switch ev.Type {
+	case runner.EventStarted:
+		m.status = fmt.Sprintf("Benchmark running. Log: %s", ev.LogPath)
+		return m, waitEventCmd(m.benchEvents)
+	case runner.EventOutput:
+		m.benchOutput += ev.Line + "\n"
+		return m, waitEventCmd(m.benchEvents)
+	case runner.EventFinished:
+		m.benchRunning = false
+		if ev.Err != nil {
+			m.status = fmt.Sprintf("Benchmark failed: %v", ev.Err)
+		} else {
+			m.benchResults = bench.ParseBenchOutput(m.benchOutput)
+			m.status = "Benchmark complete. Results shown below."
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) handleBurnInEvent(ev runner.Event) (tea.Model, tea.Cmd) {
+	switch ev.Type {
+	case runner.EventStarted:
+		m.status = fmt.Sprintf("Burn-in running. Log: %s", ev.LogPath)
+		return m, waitEventCmd(m.burnInEvents)
+	case runner.EventOutput:
+		m.burnInOutput += ev.Line + "\n"
+		m.burnInViewport.SetContent(m.burnInOutput)
+		m.burnInViewport.GotoBottom()
+		return m, waitEventCmd(m.burnInEvents)
+	case runner.EventFinished:
+		m.burnInRunning = false
+		res := burnin.ParseBurnInOutput(m.burnInOutput, ev.ExitCode, ev.Err)
+		res.LogPath = ev.LogPath
+		m.burnInResults = res
+		if res.Success {
+			m.status = "Burn-in passed."
+		} else {
+			m.status = fmt.Sprintf("Burn-in failed: %d error(s), exit code %d.", res.Errors, res.ExitCode)
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m Model) startBenchmark() (tea.Model, tea.Cmd) {
+	if m.benchRunning {
+		return m, nil
+	}
+	logPath := store.LogPath(runner.KindBenchmark, time.Now())
+	spec := runner.Spec{
+		Kind:    runner.KindBenchmark,
+		Name:    "stress-ng",
+		Args:    []string{"stress-ng", "--memrate", "1", "--memrate-bytes", "256M", "-t", "30", "--metrics"},
+		LogPath: logPath,
+	}
+	job := runner.Start(context.Background(), spec)
+	m.benchJob = job
+	m.benchEvents = job.Events()
+	m.benchRunning = true
+	m.benchOutput = ""
+	m.benchResults = nil
+	m.status = "Running memrate benchmark (30s)..."
+	return m, waitEventCmd(m.benchEvents)
+}
+
+func (m Model) startBurnIn() (tea.Model, tea.Cmd) {
+	if m.burnInRunning {
+		return m, nil
+	}
+	srcPath, err := resolveJobPath(m.jobPath)
+	if err != nil {
+		m.status = fmt.Sprintf("Cannot start burn-in: %v", err)
+		return m, nil
+	}
+	preset, err := os.ReadFile(srcPath)
+	if err != nil {
+		m.status = fmt.Sprintf("Cannot read job file: %v", err)
+		return m, nil
+	}
+	duration := 30 * time.Minute
+	jobPath, err := store.MaterializeJob(preset, duration)
+	if err != nil {
+		m.status = fmt.Sprintf("Cannot materialize job: %v", err)
+		return m, nil
+	}
+	logPath := store.LogPath(runner.KindBurnIn, time.Now())
+	spec := runner.Spec{
+		Kind:     runner.KindBurnIn,
+		Name:     "stress-ng",
+		Args:     []string{"stress-ng", "--job", jobPath},
+		LogPath:  logPath,
+		Duration: duration,
+	}
+	job := runner.Start(context.Background(), spec)
+	m.burnInJob = job
+	m.burnInEvents = job.Events()
+	m.burnInRunning = true
+	m.burnInOutput = ""
+	m.burnInResults = nil
+	m.resizeBurnInViewport()
+	m.status = "Running burn-in (30m)..."
+	return m, waitEventCmd(m.burnInEvents)
+}
+
+func (m Model) cancelJobs() {
+	if m.burnInJob != nil {
+		m.burnInJob.Cancel()
+	}
+	if m.benchJob != nil {
+		m.benchJob.Cancel()
 	}
 }
 
-// In Update, handle burnInOutputMsg to update the viewport
-
-// Convert burnin.BurnInResults to local burnInResults type
-func convertBurnInResults(b *burnin.BurnInResults) *burnInResults {
-	if b == nil {
-		return nil
+func (m Model) switchTab(tab int) (tea.Model, tea.Cmd) {
+	m.activeTab = tab
+	switch tab {
+	case 0:
+		m.status = "Tab/Shift+Tab to move, L toggles ratio lock, Enter to edit, Esc to cancel."
+	case 1:
+		if m.benchResults != nil {
+			m.status = "Benchmark results shown. Press Enter to re-run."
+		} else {
+			m.status = "Press Enter to run memrate benchmark (30s)."
+		}
+	case 2:
+		m.resizeBurnInViewport()
+		if m.burnInResults != nil {
+			m.status = "Burn-in results shown. Press Enter to re-run."
+		} else {
+			m.status = "Press Enter to run burn-in test (30m)."
+		}
 	}
-	return &burnInResults{
-		duration: b.Duration,
-		errors:   b.Errors,
-		success:  b.Success,
+	return m, nil
+}
+
+func (m *Model) resizeBurnInViewport() {
+	w, h := m.burnInViewportSize()
+	m.burnInViewport.Width = w
+	m.burnInViewport.Height = h
+	m.burnInViewport.SetContent(m.burnInOutput)
+}
+
+// burnInViewportSize derives the burn-in log viewport from the window, keeping
+// the footer visible at 80x24 and 120x40.
+func (m Model) burnInViewportSize() (int, int) {
+	w := m.width - 12
+	if w < 20 {
+		w = 20
+	}
+	h := m.height - 24
+	if h < 3 {
+		h = 3
+	}
+	return w, h
+}
+
+func (m *Model) applyDetected(vals map[string]string) {
+	for i := range m.fields {
+		if v, ok := vals[m.fields[i].label]; ok && v != "" {
+			m.fields[i].hint = v
+			m.fields[i].input.SetValue(v)
+		}
 	}
 }
 
-// Convert bench.BenchResults to local benchResults type
-func convertBenchResults(b *bench.BenchResults) *benchResults {
-	if b == nil {
-		return nil
-	}
-	out := &benchResults{
-		readRate:  b.ReadRate,
-		writeRate: b.WriteRate,
-		duration:  b.Duration,
-	}
-	for _, m := range b.Metrics {
-		out.metrics = append(out.metrics, benchMetric{label: m.Label, value: m.Value})
-	}
-	return out
-}
-
-// --- Helper methods for Model ---
-
-// focusPosition returns the current focus position index.
-func (m *Model) focusPosition() int {
-	switch m.focusType {
-	case focusField:
-		return m.focusIndex
-	case focusApply:
-		return len(m.fields)
+// resolveJobPath resolves the burn-in job source: --job flag, MEM_STATION_JOB,
+// then ./burnin-memory.job, then next to the executable.
+func resolveJobPath(flagValue string) (string, error) {
+	var candidates []string
+	switch {
+	case flagValue != "":
+		candidates = append(candidates, flagValue)
+	case os.Getenv("MEM_STATION_JOB") != "":
+		candidates = append(candidates, os.Getenv("MEM_STATION_JOB"))
 	default:
-		return len(m.fields) + 1
+		candidates = append(candidates, "burnin-memory.job")
 	}
-}
-
-// parseNumericField parses a field value as float64.
-func (m *Model) parseNumericField(label string) (float64, bool) {
-	for _, f := range m.fields {
-		if f.label != label {
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "burnin-memory.job"))
+	}
+	for _, c := range candidates {
+		if c == "" {
 			continue
 		}
-		clean := sanitizeNumeric(f.input.Value())
-		if clean == "" {
-			clean = sanitizeNumeric(f.hint)
+		if st, err := os.Stat(c); err == nil && !st.IsDir() {
+			if abs, err := filepath.Abs(c); err == nil {
+				return abs, nil
+			}
+			return c, nil
 		}
-		if clean == "" {
-			return 0, false
-		}
-		v, err := strconv.ParseFloat(clean, 64)
-		if err != nil {
-			return 0, false
-		}
-		return v, true
 	}
-	return 0, false
+	return "", fmt.Errorf("burn-in job file not found (set MEM_STATION_JOB or pass --job)")
 }
 
-// originalNumericField returns the original (hint) value for a field as float64.
-func (m *Model) originalNumericField(label string) float64 {
-	for _, f := range m.fields {
-		if f.label != label {
-			continue
-		}
-		v, err := strconv.ParseFloat(sanitizeNumeric(f.hint), 64)
-		if err != nil {
-			return 0
-		}
-		return v
-	}
-	return 0
-}
+/* --------------- Field helpers --------------- */
 
-// scaleTimingField scales a timing field's value by a ratio.
-func (m *Model) scaleTimingField(label string, ratio float64) {
-	idx := m.fieldIndex(label)
-	if idx < 0 {
+func (m *Model) commitFieldEdit() {
+	if !m.editing {
 		return
 	}
-	orig, ok := parseUnsignedInt(m.fields[idx].hint)
-	if !ok {
-		return
-	}
-	scaled := int(float64(orig)*ratio + 0.5)
-	if scaled < 1 {
-		scaled = 1
-	}
-	m.fields[idx].input.SetValue(fmt.Sprintf("%d", scaled))
+	m.editing = false
+	m.fields[m.focusIndex].input.Blur()
 }
 
-// moveFocus moves the input focus by delta, cycling through fields and actions.
 func (m *Model) moveFocus(delta int) {
 	total := len(m.fields) + 2
 	pos := m.focusPosition() + delta
@@ -180,12 +560,12 @@ func (m *Model) moveFocus(delta int) {
 	for i := range m.fields {
 		m.fields[i].input.Blur()
 	}
+	m.editing = false
 
 	switch {
 	case pos < len(m.fields):
 		m.focusType = focusField
 		m.focusIndex = pos
-		m.fields[pos].input.Focus()
 	case pos == len(m.fields):
 		m.focusType = focusApply
 	default:
@@ -193,29 +573,24 @@ func (m *Model) moveFocus(delta int) {
 	}
 }
 
-// resetValues resets all fields to their original hints.
 func (m *Model) resetValues() {
 	for i := range m.fields {
 		m.fields[i].input.SetValue(m.fields[i].hint)
 	}
 }
 
-// handleFrequencyEdit auto-scales primary timings if ratio lock is enabled.
 func (m *Model) handleFrequencyEdit() {
 	if !m.lockRatios {
 		return
 	}
-
 	newFreq, ok := m.parseNumericField("DRAM Freq")
 	if !ok || newFreq <= 0 {
 		return
 	}
-
 	origFreq := m.originalNumericField("DRAM Freq")
 	if origFreq <= 0 {
 		return
 	}
-
 	ratio := newFreq / origFreq
 	m.scaleTimingField("CAS (tCL)", ratio)
 	m.scaleTimingField("tRCD", ratio)
@@ -224,21 +599,117 @@ func (m *Model) handleFrequencyEdit() {
 	m.scaleTimingField("tRFC", ratio)
 }
 
-// snapshotSummary returns a short summary of current field values.
-func (m Model) snapshotSummary() string {
-	summary := []string{}
-	for _, f := range m.fields {
-		summary = append(summary, fmt.Sprintf("%s=%s", f.label, f.input.Value()))
+func (m *Model) scaleTimingField(label string, ratio float64) {
+	idx := m.fieldIndex(label)
+	if idx < 0 {
+		return
 	}
-	if len(summary) > 3 {
-		return strings.Join(summary[:3], ", ") + ", ..."
+	orig, ok := parseUnsignedInt(m.fields[idx].hint)
+	if !ok {
+		return
 	}
-	return strings.Join(summary, ", ")
+	scaled := int(float64(orig)*ratio + 0.5)
+	if scaled < 1 {
+		scaled = 1
+	}
+	m.fields[idx].input.SetValue(strconv.Itoa(scaled))
 }
+
+func (m Model) focusPosition() int {
+	switch m.focusType {
+	case focusField:
+		return m.focusIndex
+	case focusApply:
+		return len(m.fields)
+	default:
+		return len(m.fields) + 1
+	}
+}
+
+func (m Model) fieldIndex(label string) int {
+	for i, f := range m.fields {
+		if f.label == label {
+			return i
+		}
+	}
+	return -1
+}
+
+// parseNumericField parses a field value (input first, then hint) as float64.
+func (m Model) parseNumericField(label string) (float64, bool) {
+	for _, f := range m.fields {
+		if f.label != label {
+			continue
+		}
+		if v, ok := parseNumber(f.input.Value()); ok {
+			return v, true
+		}
+		return parseNumber(f.hint)
+	}
+	return 0, false
+}
+
+func (m Model) originalNumericField(label string) float64 {
+	for _, f := range m.fields {
+		if f.label != label {
+			continue
+		}
+		v, _ := parseNumber(f.hint)
+		return v
+	}
+	return 0
+}
+
+// parseNumber extracts the leading numeric prefix of a value ("2T" -> 2,
+// "1.35V" -> 1.35, "1600" -> 1600, "?" -> not ok).
+func parseNumber(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false
+	}
+	i := 0
+	for i < len(s) {
+		c := s[i]
+		if (c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-' {
+			i++
+			continue
+		}
+		break
+	}
+	if i == 0 {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(s[:i], 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+func parseUnsignedInt(s string) (int, bool) {
+	v, ok := parseNumber(s)
+	if !ok || v <= 0 {
+		return 0, false
+	}
+	return int(v), true
+}
+
+func ceilDiv(a, b int) int {
+	return (a + b - 1) / b
+}
+
+func formatBounds(f float64) string {
+	return strconv.FormatFloat(f, 'f', -1, 64)
+}
+
+/* --------------- View --------------- */
 
 func (m Model) View() string {
 	if m.width == 0 {
 		m.width = 120
+	}
+	if m.height == 0 {
+		m.height = 40
 	}
 
 	heading := style.Heading.Render(" MemStation ") + "  " +
@@ -247,7 +718,6 @@ func (m Model) View() string {
 	tabBar := m.renderTabBar()
 
 	var content string
-
 	switch m.activeTab {
 	case 0:
 		content = m.renderSysInfoTab()
@@ -261,265 +731,6 @@ func (m Model) View() string {
 
 	ui := lipgloss.JoinVertical(lipgloss.Left, heading, tabBar, "", content, "", status)
 	return style.PaddingApp.Render(ui)
-}
-
-// Stub for sanitizeNumeric if not present
-func sanitizeNumeric(s string) string { return s }
-
-// tertiaryTimings is a placeholder for the IMC timing struct.
-type tertiaryTimings struct {
-	channel int
-	tRDRDsg int
-	tRDRDdg int
-	tRDRDdr int
-	tRDRDdd int
-	tWRWRsg int
-	tWRWRdg int
-	tWRWRdr int
-	tWRWRdd int
-	tRDWRsg int
-	tRDWRdg int
-	tRDWRdr int
-	tRDWRdd int
-	tWRRDsg int
-	tWRRDdg int
-	tWRRDdr int
-	tWRRDdd int
-	tRAS    int
-	tRCD    int
-	tRP     int
-	tRTP    int
-	tWTR    int
-	tRRDsg  int
-	tRRDdg  int
-	tCKE    int
-	tREFI   int
-	tRFC    int
-	tRDPRE  int
-	tWRPRE  int
-	rawDBP  int
-	rawRAP  int
-	rawRWP  int
-	rawOTH  int
-	rawOTH2 int
-	rawRFTP int
-}
-
-// Hardware detect: use memory.DetectDefaults
-func detectDefaults() (map[string]string, string, *spdInfo) {
-	vals, msg, spd := memory.DetectDefaults()
-	// Convert memory.SPDInfo → local spdInfo
-	var out *spdInfo
-	if spd != nil {
-		out = &spdInfo{
-			moduleManufacturer: spd.ModuleManufacturer,
-			dramManufacturer:   spd.DRAMManufacturer,
-			partNumber:         spd.PartNumber,
-			moduleType:         spd.ModuleType,
-			memoryType:         spd.MemoryType,
-			moduleSpeed:        spd.ModuleSpeed,
-			sizeMB:             spd.SizeMB,
-			ranks:              spd.Ranks,
-			bankLayout:         spd.BankLayout,
-			busWidth:           spd.BusWidth,
-			deviceWidth:        spd.DeviceWidth,
-			supportedCL:        spd.SupportedCL,
-			voltage:            spd.Voltage,
-			timingString:       spd.TimingString,
-			timingsBySpeed:     spd.TimingsBySpeed,
-			tWR:                spd.TWR,
-			tRRD:               spd.TRRD,
-			tRC:                spd.TRC,
-			tWTR:               spd.TWTR,
-			tRTP:               spd.TRTP,
-			tFAW:               spd.TFAW,
-			tCKmin:             spd.TCKmin,
-			dllOff:             spd.DLLOff,
-			tempRange:          spd.TempRange,
-			autoSR:             spd.AutoSR,
-			moduleHeight:       spd.ModuleHeight,
-			refCard:            spd.RefCard,
-			numDIMMs:           spd.NumDIMMs,
-		}
-	}
-	return vals, msg, out
-}
-func newField(base textinput.Model, label, value, desc string) timingField {
-	in := base
-	in.SetValue(value)
-	in.Placeholder = value
-	return timingField{label: label, hint: value, desc: desc, input: in}
-}
-func readMCHBARTimings() ([]tertiaryTimings, error) { return nil, nil }
-
-// --- Types and Structs ---
-type timingField struct {
-	label string
-	hint  string
-	desc  string
-	input textinput.Model
-}
-
-type benchMetric struct {
-	label string
-	value float64
-}
-
-type benchResults struct {
-	readRate  float64
-	writeRate float64
-	metrics   []benchMetric
-	duration  string
-}
-
-type burnInResults struct {
-	duration string
-	errors   int
-	success  bool
-}
-
-type benchResultMsg struct {
-	results *benchResults
-	err     error
-}
-
-type burnInResultMsg struct {
-	results *burnInResults
-	err     error
-}
-
-type spdInfo struct {
-	moduleManufacturer string
-	dramManufacturer   string
-	partNumber         string
-	moduleType         string
-	memoryType         string
-	moduleSpeed        string
-	sizeMB             string
-	ranks              string
-	bankLayout         string
-	busWidth           string
-	deviceWidth        string
-	supportedCL        string
-	voltage            string
-	timingString       string
-	timingsBySpeed     []string
-	tWR                string
-	tRRD               string
-	tRC                string
-	tWTR               string
-	tRTP               string
-	tFAW               string
-	tCKmin             string
-	dllOff             string
-	tempRange          string
-	autoSR             string
-	moduleHeight       string
-	refCard            string
-	numDIMMs           string
-}
-
-// --- Model struct ---
-type Model struct {
-	fields         []timingField
-	focusIndex     int
-	focusType      focusTarget
-	lockRatios     bool
-	width          int
-	height         int
-	status         string
-	activeTab      int
-	benchRunning   bool
-	burnInRunning  bool
-	benchResults   *benchResults
-	burnInResults  *burnInResults
-	burnInOutput   string
-	burnInViewport viewport.Model
-	spd            *spdInfo
-	imcTimings     []tertiaryTimings
-}
-
-// --- Focus target for input navigation and actions ---
-type focusTarget int
-
-const (
-	focusField focusTarget = iota
-	focusApply
-	focusCancel
-)
-
-// --- Exported constructor ---
-func InitialModel() Model {
-	detected, detectMsg, spd := detectDefaults()
-
-	get := func(label, fallback string) string {
-		if v, ok := detected[label]; ok && v != "" {
-			return v
-		}
-		return fallback
-	}
-
-	baseInput := textinput.New()
-	baseInput.CharLimit = 8
-	baseInput.Width = 8
-
-	fields := []timingField{
-		newField(baseInput, "Channels", get("Channels", "2"), "Detected memory channels."),
-		newField(baseInput, "DRAM Ratio", get("DRAM Ratio", "?"), "Memory multiplier relative to base clock."),
-		newField(baseInput, "DRAM Freq", get("DRAM Freq", "1600"), "Effective DRAM frequency in MT/s."),
-		newField(baseInput, "CAS (tCL)", get("CAS (tCL)", "?"), "CAS latency cycles."),
-		newField(baseInput, "tRCD", get("tRCD", "?"), "RAS to CAS delay cycles."),
-		newField(baseInput, "tRP", get("tRP", "?"), "Row precharge delay cycles."),
-		newField(baseInput, "tRAS", get("tRAS", "?"), "Active to precharge delay cycles."),
-		newField(baseInput, "Command Rate", get("Command Rate", "2T"), "Command rate; usually 1T or 2T."),
-		newField(baseInput, "tRFC", get("tRFC", "?"), "Refresh cycle timing."),
-		newField(baseInput, "DRAM Voltage", get("DRAM Voltage", "?"), "Requested memory rail voltage."),
-	}
-
-	fields[0].input.Focus()
-	fields[0].input.PromptStyle = style.Safe
-	fields[0].input.TextStyle = style.Heading
-
-	imcTimings, _ := readMCHBARTimings()
-
-	return Model{
-		fields:         fields,
-		focusIndex:     0,
-		focusType:      focusField,
-		lockRatios:     true,
-		status:         detectMsg + " | Tab/Shift+Tab to move, L toggles ratio lock.",
-		spd:            spd,
-		imcTimings:     imcTimings,
-		burnInViewport: viewport.Model{},
-	}
-}
-
-// --- Helper and method implementations ---
-
-// parseUnsignedInt parses a string to a positive int, returns (0, false) if invalid.
-func parseUnsignedInt(s string) (int, bool) {
-	clean := sanitizeNumeric(s)
-	if clean == "" {
-		return 0, false
-	}
-	v, err := strconv.ParseFloat(clean, 64)
-	if err != nil {
-		return 0, false
-	}
-	if v <= 0 {
-		return 0, false
-	}
-	return int(v), true
-}
-
-// fieldIndex returns the index of a field with the given label, or -1 if not found.
-func (m *Model) fieldIndex(label string) int {
-	for i, f := range m.fields {
-		if f.label == label {
-			return i
-		}
-	}
-	return -1
 }
 
 func (m Model) renderTabBar() string {
@@ -575,10 +786,17 @@ func (m Model) renderBurnInTab() string {
 	}
 
 	var sections []string
-
-	if m.burnInRunning {
-		sections = append(sections, style.RunningBtn.Render(" Running... (30s) "))
-	} else {
+	switch {
+	case m.burnInRunning:
+		sections = append(sections, style.RunningBtn.Render(" Running... (30m) "))
+	case m.burnInResults != nil:
+		r := m.burnInResults
+		if r.Success {
+			sections = append(sections, style.Safe.Render("✓ Burn-in passed")+style.Hint.Render(fmt.Sprintf("  errors=%d exit=%d", r.Errors, r.ExitCode)))
+		} else {
+			sections = append(sections, style.Unsafe.Render("✗ Burn-in failed")+style.Hint.Render(fmt.Sprintf("  errors=%d exit=%d", r.Errors, r.ExitCode)))
+		}
+	default:
 		sections = append(sections, style.RunBtn.Render(" Enter — Run Burn-in "))
 	}
 	sections = append(sections, "")
@@ -617,139 +835,6 @@ func (m Model) renderBenchmarkTab() string {
 	}
 
 	return style.Panel.Width(fullWidth).Render(strings.Join(sections, "\n"))
-}
-
-// Ensure Model implements tea.Model
-func (m Model) Init() tea.Cmd {
-	return nil // or textinput.Blink if desired
-}
-
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case burnInOutputLineMsg:
-		m.burnInOutput += string(msg) + "\n"
-		m.burnInViewport.SetContent(m.burnInOutput)
-		// Continue streaming
-		return m, runBurnInStreamCmd
-	case burnInOutputMsg:
-		m.burnInOutput = string(msg)
-		m.burnInViewport.SetContent(m.burnInOutput)
-		return m, nil
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		return m, nil
-	case benchResultMsg:
-		m.benchRunning = false
-		if msg.err != nil {
-			m.status = fmt.Sprintf("Benchmark failed: %v", msg.err)
-		} else {
-			m.benchResults = msg.results
-			m.status = "Benchmark complete. Results shown below."
-		}
-		return m, nil
-	case burnInResultMsg:
-		m.burnInRunning = false
-		if msg.err != nil {
-			m.status = fmt.Sprintf("Burn-in failed: %v", msg.err)
-		} else {
-			m.burnInResults = msg.results
-			m.status = "Burn-in complete. Results shown below."
-		}
-		return m, nil
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		case "f1":
-			m.activeTab = 0
-			m.status = "Tab/Shift+Tab to move, L toggles ratio lock, Enter to apply, Esc to cancel changes."
-			return m, nil
-		case "f2":
-			m.activeTab = 1
-			if m.benchResults != nil {
-				m.status = "Benchmark results shown. Press Enter to re-run."
-			} else {
-				m.status = "Press Enter to run memrate benchmark (30s)."
-			}
-			return m, nil
-		case "f3":
-			m.activeTab = 2
-			if m.burnInResults != nil {
-				m.status = "Burn-in results shown. Press Enter to re-run."
-			} else {
-				m.status = "Press Enter to run burn-in test (30s)."
-			}
-			return m, nil
-		case "l":
-			if m.activeTab == 0 {
-				m.lockRatios = !m.lockRatios
-				if m.lockRatios {
-					m.status = "Ratio lock enabled. Frequency edits auto-scale primary timings."
-				} else {
-					m.status = "Ratio lock disabled. Timings can be tuned independently."
-				}
-			}
-			return m, nil
-		case "tab":
-			if m.activeTab == 0 {
-				m.moveFocus(1)
-			}
-			return m, nil
-		case "shift+tab":
-			if m.activeTab == 0 {
-				m.moveFocus(-1)
-			}
-			return m, nil
-		case "esc":
-			if m.activeTab == 0 {
-				m.resetValues()
-				m.status = "Changes canceled."
-			}
-			return m, nil
-		case "enter":
-			switch m.activeTab {
-			case 1:
-				if !m.benchRunning {
-					m.benchRunning = true
-					m.status = "Running memrate benchmark (30s)..."
-					return m, runBenchmarkCmd
-				}
-				return m, nil
-			case 2:
-				if !m.burnInRunning {
-					m.burnInRunning = true
-					m.status = "Running burn-in test (30s)..."
-					return m, runBurnInCmd
-				}
-			}
-			if m.focusType == focusApply {
-				m.status = "Applied (mock): " + m.snapshotSummary()
-				return m, nil
-			}
-			if m.focusType == focusCancel {
-				m.resetValues()
-				m.status = "Changes canceled."
-				return m, nil
-			}
-		}
-	}
-
-	if m.activeTab == 0 && m.focusType == focusField {
-		idx := m.focusIndex
-		before := m.fields[idx].input.Value()
-		updated, cmd := m.fields[idx].input.Update(msg)
-		m.fields[idx].input = updated
-		after := m.fields[idx].input.Value()
-
-		if m.fields[idx].label == "DRAM Freq" && before != after {
-			m.handleFrequencyEdit()
-		}
-
-		return m, cmd
-	}
-
-	return m, nil
 }
 
 /* --------------- Render Methods --------------- */
@@ -797,14 +882,6 @@ func (m Model) renderFields(start, end int) string {
 	return strings.Join(rows, "\n")
 }
 
-type fieldBounds struct {
-	min    int
-	max    int
-	note   string
-	hasMin bool
-	hasMax bool
-}
-
 func (m Model) safeBounds(label string) fieldBounds {
 	freq, okF := m.parseNumericField("DRAM Freq")
 	if !okF || freq <= 0 {
@@ -814,26 +891,26 @@ func (m Model) safeBounds(label string) fieldBounds {
 	trcdVal, _ := m.parseNumericField("tRCD")
 	switch label {
 	case "CAS (tCL)":
-		minCL := ceilDiv(int(freq)*10, 2000)
+		minCL := float64(ceilDiv(int(freq)*10, 2000))
 		if minCL < 5 {
 			minCL = 5
 		}
 		return fieldBounds{min: minCL, max: 18, hasMin: true, hasMax: true}
 	case "tRCD":
-		minRCD := ceilDiv(int(freq)*10, 2000)
+		minRCD := float64(ceilDiv(int(freq)*10, 2000))
 		if minRCD < 5 {
 			minRCD = 5
 		}
 		return fieldBounds{min: minRCD, max: 18, hasMin: true, hasMax: true}
 	case "tRP":
-		minRP := ceilDiv(int(freq)*10, 2000)
+		minRP := float64(ceilDiv(int(freq)*10, 2000))
 		if minRP < 5 {
 			minRP = 5
 		}
 		return fieldBounds{min: minRP, max: 18, hasMin: true, hasMax: true}
 	case "tRAS":
-		minFormula := int(tclVal + trcdVal)
-		minNs := ceilDiv(int(freq)*35, 2000)
+		minFormula := tclVal + trcdVal
+		minNs := float64(ceilDiv(int(freq)*35, 2000))
 		minRAS := minFormula
 		if minNs > minRAS {
 			minRAS = minNs
@@ -843,12 +920,12 @@ func (m Model) safeBounds(label string) fieldBounds {
 		}
 		return fieldBounds{min: minRAS, max: 63, hasMin: true, hasMax: true, note: "≥CL+tRCD"}
 	case "tRFC":
-		minRFC := ceilDiv(int(freq)*160, 2000)
+		minRFC := float64(ceilDiv(int(freq)*160, 2000))
 		return fieldBounds{min: minRFC, max: 511, hasMin: true, hasMax: true, note: "≥160ns"}
 	case "Command Rate":
 		return fieldBounds{min: 1, max: 2, hasMin: true, hasMax: true, note: "1T/2T"}
 	case "DRAM Voltage":
-		return fieldBounds{min: 1, max: 1, hasMin: true, hasMax: true, note: "1.35-1.65V"}
+		return fieldBounds{min: 1.35, max: 1.65, hasMin: true, hasMax: true, note: "1.35-1.65V"}
 	default:
 		return fieldBounds{}
 	}
@@ -859,32 +936,43 @@ func (m Model) renderBounds(f timingField, b fieldBounds) string {
 		return style.Bounds.Render("")
 	}
 	var rangeStr string
-	if f.label == "DRAM Voltage" || f.label == "Command Rate" {
+	switch f.label {
+	case "DRAM Voltage", "Command Rate":
 		rangeStr = b.note
-	} else if b.hasMin && b.hasMax {
-		rangeStr = fmt.Sprintf("%d-%d", b.min, b.max)
-		if b.note != "" {
-			rangeStr += " " + b.note
+	default:
+		if b.hasMin && b.hasMax {
+			rangeStr = formatBounds(b.min) + "-" + formatBounds(b.max)
+			if b.note != "" {
+				rangeStr += " " + b.note
+			}
+		} else if b.hasMin {
+			rangeStr = "≥" + formatBounds(b.min)
+		} else {
+			rangeStr = "≤" + formatBounds(b.max)
 		}
-	} else if b.hasMin {
-		rangeStr = fmt.Sprintf("≥%d", b.min)
 	}
-	val, ok := parseUnsignedInt(f.input.Value())
+
+	v, ok := parseNumber(f.input.Value())
 	if !ok {
+		// Unknown ("?") values get the range without a severity color.
 		return style.Bounds.Render(rangeStr)
 	}
+
+	if f.label == "DRAM Voltage" {
+		if (b.hasMin && v < b.min) || (b.hasMax && v > b.max) {
+			return style.Unsafe.Width(14).Render(rangeStr)
+		}
+		return style.Safe.Width(14).Render(rangeStr)
+	}
+
 	switch {
-	case b.hasMin && val < b.min:
+	case b.hasMin && v < b.min:
 		return style.Unsafe.Width(14).Render(rangeStr)
-	case b.hasMax && val > b.max:
+	case b.hasMax && v > b.max:
 		return style.Warn.Width(14).Render(rangeStr)
 	default:
 		return style.Safe.Width(14).Render(rangeStr)
 	}
-}
-
-func ceilDiv(a, b int) int {
-	return (a + b - 1) / b
 }
 
 func (m Model) renderButtons() string {
@@ -923,9 +1011,10 @@ func (m Model) renderGuidePanel(width int) string {
 		style.SectionTitle.Render("Keys"),
 		style.Hint.Render("F1 / F2 / F3       Switch tabs"),
 		style.Hint.Render("Tab / Shift+Tab    Move focus"),
-		style.Hint.Render("Enter              Activate action"),
+		style.Hint.Render("Enter              Edit / run / apply"),
 		style.Hint.Render("L                  Toggle ratio lock"),
-		style.Hint.Render("Esc                Cancel edits"),
+		style.Hint.Render("Esc                Cancel edit (2x resets)"),
+		style.Hint.Render("R                  Re-detect hardware"),
 		style.Hint.Render("Q                  Quit"),
 	}
 	return lipgloss.NewStyle().Width(width).Render(strings.Join(guide, "\n"))
@@ -965,14 +1054,14 @@ func (m Model) renderBenchResults() []string {
 	rows := []string{
 		style.SectionTitle.Render("Summary"),
 		header,
-		m.renderResultRow("Read Rate (avg)", r.readRate, peakMBs),
-		m.renderResultRow("Write Rate (avg)", r.writeRate, peakMBs),
+		m.renderResultRow("Read Rate (avg)", r.ReadRate, peakMBs),
+		m.renderResultRow("Write Rate (avg)", r.WriteRate, peakMBs),
 		"",
 	}
-	if len(r.metrics) > 0 {
+	if len(r.Metrics) > 0 {
 		rows = append(rows, style.SectionTitle.Render("Detailed Rates (MB/s)"))
-		for _, metric := range r.metrics {
-			rows = append(rows, m.renderResultRow(metric.label, metric.value, peakMBs))
+		for _, metric := range r.Metrics {
+			rows = append(rows, m.renderResultRow(metric.Label, metric.Value, peakMBs))
 		}
 		rows = append(rows, "")
 	}
@@ -1028,16 +1117,16 @@ func (m Model) renderIMCPanel() string {
 func (m Model) renderSPDInfoPanel(width int) string {
 	lines := []string{
 		style.SectionTitle.Render("SPD Information"),
-		style.InfoLabel.Render("Module:") + " " + style.InfoValue.Render(m.spd.moduleManufacturer+" "+m.spd.partNumber),
-		style.InfoLabel.Render("DRAM:") + " " + style.InfoValue.Render(m.spd.dramManufacturer+" "+m.spd.memoryType),
-		style.InfoLabel.Render("Size:") + " " + style.InfoValue.Render(m.spd.sizeMB+" MB ("+m.spd.ranks+" ranks)"),
-		style.InfoLabel.Render("Speed:") + " " + style.InfoValue.Render(m.spd.moduleSpeed),
-		style.InfoLabel.Render("Timings:") + " " + style.InfoValue.Render(m.spd.timingString),
+		style.InfoLabel.Render("Module:") + " " + style.InfoValue.Render(m.spd.ModuleManufacturer+" "+m.spd.PartNumber),
+		style.InfoLabel.Render("DRAM:") + " " + style.InfoValue.Render(m.spd.DRAMManufacturer+" "+m.spd.MemoryType),
+		style.InfoLabel.Render("Size:") + " " + style.InfoValue.Render(m.spd.SizeMB+" MB ("+m.spd.Ranks+" ranks)"),
+		style.InfoLabel.Render("Speed:") + " " + style.InfoValue.Render(m.spd.ModuleSpeed),
+		style.InfoLabel.Render("Timings:") + " " + style.InfoValue.Render(m.spd.TimingString),
 	}
 	return lipgloss.NewStyle().Width(width).Render(strings.Join(lines, "\n"))
 }
 
-func renderChannelIMC(t tertiaryTimings) string {
+func renderChannelIMC(t memory.IMCTimings) string {
 	matHdr := style.ColHeader.Render(fmt.Sprintf("  %-10s %4s %4s %4s %4s", "", "sg", "dg", "dr", "dd"))
 	matRow := func(name string, sg, dg, dr, dd int) string {
 		return fmt.Sprintf("  %-10s %4d %4d %4d %4d", name, sg, dg, dr, dd)
@@ -1046,35 +1135,26 @@ func renderChannelIMC(t tertiaryTimings) string {
 		return fmt.Sprintf("  %-12s %d", label, val)
 	}
 	left := strings.Join([]string{
-		style.SectionTitle.Render(fmt.Sprintf("Channel %d — Turnaround", t.channel)),
+		style.SectionTitle.Render(fmt.Sprintf("Channel %d — Turnaround", t.Channel)),
 		matHdr,
-		matRow("tRDRD", t.tRDRDsg, t.tRDRDdg, t.tRDRDdr, t.tRDRDdd),
-		matRow("tWRWR", t.tWRWRsg, t.tWRWRdg, t.tWRWRdr, t.tWRWRdd),
-		matRow("tRDWR", t.tRDWRsg, t.tRDWRdg, t.tRDWRdr, t.tRDWRdd),
-		matRow("tWRRD", t.tWRRDsg, t.tWRRDdg, t.tWRRDdr, t.tWRRDdd),
+		matRow("tRDRD", t.TRDRDsg, t.TRDRDdg, t.TRDRDdr, t.TRDRDdd),
+		matRow("tWRWR", t.TWRWRsg, t.TWRWRdg, t.TWRWRdr, t.TWRWRdd),
+		matRow("tRDWR", t.TRDWRsg, t.TRDWRdg, t.TRDWRdr, t.TRDWRdd),
+		matRow("tWRRD", t.TWRRDsg, t.TWRRDdg, t.TWRRDdr, t.TWRRDdd),
 	}, "\n")
 	right := strings.Join([]string{
 		style.SectionTitle.Render("IMC Register Values"),
-		imcRow("tRAS", t.tRAS),
-		imcRow("tRCD", t.tRCD),
-		imcRow("tRP", t.tRP),
-		imcRow("tRTP", t.tRTP),
-		imcRow("tWTR", t.tWTR),
-		imcRow("tRRD sg/dg", t.tRRDsg) + " / " + strconv.Itoa(t.tRRDdg),
-		imcRow("tCKE", t.tCKE),
-		imcRow("tREFI", t.tREFI),
-		imcRow("tRFC", t.tRFC),
+		imcRow("tRAS", t.TRAS),
+		imcRow("tRCD", t.TRCD),
+		imcRow("tRP", t.TRP),
+		imcRow("tRTP", t.TRTP),
+		imcRow("tWTR", t.TWTR),
+		imcRow("tRRD sg/dg", t.TRRDsg) + " / " + strconv.Itoa(t.TRRDdg),
+		imcRow("tCKE", t.TCKE),
+		imcRow("tREFI", t.TREFI),
+		imcRow("tRFC", t.TRFC),
 	}, "\n")
 	leftStyled := lipgloss.NewStyle().Width(38).Render(left)
 	rightStyled := lipgloss.NewStyle().Width(30).Render(right)
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, "  ", rightStyled)
-}
-
-func renderConsoleOutputStream(title string, lines <-chan string) string {
-	var styledLines []string
-	styledLines = append(styledLines, style.SectionTitle.Render(title))
-	for line := range lines {
-		styledLines = append(styledLines, style.ConsoleLine.Render(line))
-	}
-	return strings.Join(styledLines, "\n")
 }
