@@ -484,6 +484,8 @@ func (m *Model) Overlay(w, h int) (string, bool) {
 		return m.applyDialog(w, h), true
 	case modalLoadProfile:
 		return m.pickerDialog(w, h), true
+	case modalImportProfile:
+		return m.importDialog(w, h), true
 	default:
 		return m.promptDialog(w), true
 	}

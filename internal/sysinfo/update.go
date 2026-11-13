@@ -424,8 +424,11 @@ func (m *Model) openApply() tea.Cmd {
 // confirms on enter, the load picker is driven by its list, and the profile
 // prompts additionally forward typing.
 func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
-	if m.modal == modalLoadProfile {
+	switch m.modal {
+	case modalLoadProfile:
 		return m.updatePicker(msg)
+	case modalImportProfile:
+		return m.updateImportPicker(msg)
 	}
 	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if !ok {
@@ -499,11 +502,10 @@ func (m *Model) openExportProfile() tea.Cmd {
 	return nil
 }
 
-// openImportProfile prompts for a profile JSON file to load into the draft.
+// openImportProfile opens the JSON file browser. The dialog is a picker rather
+// than a typed path so a long directory is navigable.
 func (m *Model) openImportProfile() tea.Cmd {
-	m.commitEdit()
-	m.openPrompt(modalImportProfile, "", "path to a profile JSON file")
-	return nil
+	return m.openImportPicker()
 }
 
 // openPrompt opens a text-prompt modal with a prefilled value.

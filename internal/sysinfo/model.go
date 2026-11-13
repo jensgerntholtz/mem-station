@@ -19,6 +19,7 @@ import (
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
 
+	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
@@ -79,7 +80,7 @@ func (s modalState) Title() string {
 // list/yes-no decision. The load modal is a picker, not a prompt.
 func (s modalState) prompt() bool {
 	switch s {
-	case modalSaveProfile, modalExportProfile, modalImportProfile:
+	case modalSaveProfile, modalExportProfile:
 		return true
 	}
 	return false
@@ -121,6 +122,9 @@ type Model struct {
 	picker    list.Model
 	pickerErr string
 
+	// importPicker is the JSON file browser shown by ctrl+o.
+	importPicker filepicker.Model
+
 	keys KeyMap
 }
 
@@ -149,18 +153,19 @@ func New() *Model {
 	prompt.SetWidth(60)
 
 	return &Model{
-		fields:     Fields(),
-		draft:      draft,
-		applied:    applied,
-		detected:   map[FieldID]string{},
-		input:      in,
-		prompt:     prompt,
-		lockRatios: true,
-		imcNote:    "Raw MCHBAR registers are opt-in; press I to read them.",
-		spdVP:      viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
-		imcVP:      viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
-		picker:     newProfilePicker(),
-		keys:       DefaultKeyMap(),
+		fields:       Fields(),
+		draft:        draft,
+		applied:      applied,
+		detected:     map[FieldID]string{},
+		input:        in,
+		prompt:       prompt,
+		lockRatios:   true,
+		imcNote:      "Raw MCHBAR registers are opt-in; press I to read them.",
+		spdVP:        viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
+		imcVP:        viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
+		picker:       newProfilePicker(),
+		importPicker: newImportPicker(),
+		keys:         DefaultKeyMap(),
 	}
 }
 

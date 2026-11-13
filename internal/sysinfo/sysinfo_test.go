@@ -552,6 +552,31 @@ func pickProfile(t *testing.T, m *Model, name string) {
 	m.Update(uitest.Code(tea.KeyEnter))
 }
 
+// openImport opens the JSON file browser at path's directory and highlights it.
+func openImport(t *testing.T, m *Model, path string) {
+	t.Helper()
+	m.Update(uitest.Ctrl('o'))
+	if !m.ModalOpen() || m.modal != modalImportProfile {
+		t.Fatalf("ctrl+o did not open the import browser (modal %v)", m.modal)
+	}
+	m.importPicker.CurrentDirectory = filepath.Dir(path)
+	if cmd := m.importPicker.Init(); cmd != nil {
+		m.Update(cmd())
+	}
+	highlightImport(t, m, path)
+}
+
+// highlightImport moves the browser selection onto path.
+func highlightImport(t *testing.T, m *Model, path string) {
+	t.Helper()
+	for i := 0; i < 64 && m.importPicker.HighlightedPath() != path; i++ {
+		m.Update(uitest.Code(tea.KeyDown))
+	}
+	if got := m.importPicker.HighlightedPath(); got != path {
+		t.Fatalf("could not highlight %s in the import browser (at %s)", path, got)
+	}
+}
+
 // TestSaveNamedProfileFromDraft saves the draft under a name without touching
 // the active profile.
 func TestSaveNamedProfileFromDraft(t *testing.T) {
@@ -609,7 +634,11 @@ func TestImportProfileValidation(t *testing.T) {
 	if err := os.WriteFile(bad, []byte(`{"name":"bad","values":{"not_a_key":"1"}}`), 0o600); err != nil {
 		t.Fatalf("write bad profile: %v", err)
 	}
-	promptModel(t, m, uitest.Ctrl('o'), bad)
+	good := filepath.Join(dir, "good.json")
+	if err := os.WriteFile(good, []byte(`{"name":"good","values":{"tCL":"18","tRCD":"20"}}`), 0o600); err != nil {
+		t.Fatalf("write good profile: %v", err)
+	}
+	openImport(t, m, bad)
 	m.Update(uitest.Code(tea.KeyEnter))
 	if !m.ModalOpen() {
 		t.Fatal("an invalid import closed the modal")
@@ -621,11 +650,7 @@ func TestImportProfileValidation(t *testing.T) {
 		t.Error("an invalid import changed the draft")
 	}
 
-	good := filepath.Join(dir, "good.json")
-	if err := os.WriteFile(good, []byte(`{"name":"good","values":{"tCL":"18","tRCD":"20"}}`), 0o600); err != nil {
-		t.Fatalf("write good profile: %v", err)
-	}
-	m.prompt.SetValue(good)
+	highlightImport(t, m, good)
 	m.Update(uitest.Code(tea.KeyEnter))
 	if m.ModalOpen() {
 		t.Error("a valid import did not close the modal")
@@ -854,5 +879,43 @@ func TestProfilePickerEmptyState(t *testing.T) {
 	m.Update(uitest.Code(tea.KeyEnter))
 	if m.Dirty() {
 		t.Error("confirming an empty picker changed the draft")
+	}
+}
+
+// TestImportDialogLayout checks the file browser renders inside the dialog
+// frame, names the directory and files, and closes on esc without importing.
+func TestImportDialogLayout(t *testing.T) {
+	m := detectedModel(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "profile.json"), []byte(`{"name":"x"}`), 0o600); err != nil {
+		t.Fatalf("write profile: %v", err)
+	}
+
+	m.Update(uitest.Ctrl('o'))
+	m.importPicker.CurrentDirectory = dir
+	m.Update(m.importPicker.Init()())
+
+	dialog, ok := m.Overlay(78, 21)
+	if !ok {
+		t.Fatal("ctrl+o did not expose an overlay dialog")
+	}
+	for _, want := range []string{"Import profile JSON", "profile.json", "esc cancel"} {
+		if !strings.Contains(dialog, want) {
+			t.Errorf("import dialog missing %q:\n%s", want, dialog)
+		}
+	}
+	if got := lipgloss.Width(dialog); got > 78 {
+		t.Errorf("import dialog width = %d, want at most 78", got)
+	}
+	if got := lipgloss.Height(dialog); got > 21 {
+		t.Errorf("import dialog height = %d, want at most 21", got)
+	}
+
+	m.Update(uitest.Code(tea.KeyEsc))
+	if m.ModalOpen() {
+		t.Error("esc did not close the import browser")
+	}
+	if m.Dirty() {
+		t.Error("closing the import browser changed the draft")
 	}
 }

@@ -62,6 +62,11 @@ func DefaultKeyMap() KeyMap {
 // Keys returns the context hints for the footer.
 func (m *Model) Keys() []ui.KeyHint {
 	switch {
+	case m.modal == modalImportProfile:
+		return []ui.KeyHint{
+			{Key: "enter", Action: "open/select"}, {Key: "h/←", Action: "up"},
+			{Key: "esc", Action: "cancel"},
+		}
 	case m.modal == modalLoadProfile:
 		return []ui.KeyHint{
 			{Key: "↑/↓", Action: "select"}, {Key: "/", Action: "filter"},
