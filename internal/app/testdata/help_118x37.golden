@@ -5,7 +5,8 @@
  │   f1/f2/f3  switch tabs (or 1/2/3)                                                                                 │ 
  │   ?  toggle help                                                                                                   │ 
  │   esc  close help                                                                                                  │ 
- │   R  retry detection                                                                                               │ 
+ │   R  retry detection (unprivileged)                                                                                │ 
+ │   E  elevate detection with sudo                                                                                   │ 
  │   ctrl+c  cancel a running job, else quit                                                                          │ 
  │   q  quit                                                                                                          │ 
  │                                                                                                                    │ 
@@ -34,7 +35,6 @@
  │   ctrl+p  save profile                                                                                             │ 
  │   ctrl+l  load profile                                                                                             │ 
  │   ctrl+e  export JSON                                                                                              │ 
- │   ctrl+o  import JSON                                                                                              │ 
  │ ↑/↓ scroll · esc close                                                                                             │ 
  ╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯ 
  Detected 2 channels at 3200 MT…↑/k select  enter edit  tab next field  l ratio lock  ctrl+s apply profile  ] next view 

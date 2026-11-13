@@ -109,7 +109,7 @@ func printSPD(deps Deps, spd *memory.SPDInfo) {
 		{"Module type", spd.ModuleType},
 		{"Memory type", spd.MemoryType},
 		{"Speed", spd.ModuleSpeed},
-		{"Size (MB)", spd.SizeMB},
+		{"Size", spd.SizeLabel()},
 		{"Ranks", spd.Ranks},
 		{"Bus width", spd.BusWidth},
 		{"Device width", spd.DeviceWidth},

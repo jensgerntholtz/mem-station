@@ -49,9 +49,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sys.SetDetected(msg.values, msg.msg, msg.spd)
 		m.syncSnapshot()
 		if len(msg.values) == 0 {
-			return m, m.setStatus(msg.msg+" · press R to retry", ui.LevelWarn)
+			return m, m.detectionFailed(msg.msg)
 		}
 		return m, m.setStatus(msg.msg, ui.LevelInfo)
+
+	case elevateMsg:
+		return m, m.handleElevation(msg)
 
 	case imcResultMsg:
 		m.sys.SetIMC(msg.timings, msg.err)
@@ -143,6 +146,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.quit()
 	case key.Matches(msg, m.keys.RetryDetect):
 		return m.retryDetection()
+	case key.Matches(msg, m.keys.Elevate):
+		return m.elevateCmd()
 	case key.Matches(msg, m.keys.Tab1):
 		m.switchTab(0)
 		return nil
@@ -205,6 +210,15 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		key = tea.KeyMsg{Type: tea.KeyPgUp}
 	}
 	return active.Update(key)
+}
+
+// detectionFailed reports a detection attempt that produced no values, naming
+// the fix that actually applies to this process.
+func (m *Model) detectionFailed(reason string) tea.Cmd {
+	if isRoot() {
+		return m.setStatus("Detection failed: "+reason, ui.LevelError)
+	}
+	return m.setStatus("Detection needs root · press E to elevate with sudo", ui.LevelError)
 }
 
 func (m *Model) retryDetection() tea.Cmd {

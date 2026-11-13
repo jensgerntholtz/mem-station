@@ -2,7 +2,7 @@
    1 Timings    2 Benchmark    3 Burn-in                                                                                
  ╭───────────────────────────────────────────────────────────────────────╮  ╭─────────────────────────────────────────╮ 
  │ Timings                                                               │  │ Guidance                                │ 
- │ Setting           Detected   Draft      Delta     Safety              │  │ Perf Projection                         │ 
+ │ Setting           Detected   Draft      Margin    Safety              │  │ Perf Projection                         │ 
  │ General                                                               │  │ Peak:      51.20 GB/s                   │ 
  │ Channels          2          2          +1        ok                  │  │ Per chan:  25.60 GB/s                   │ 
  │ DRAM Ratio        16         16                                       │  │ Sustained: 41.98 GB/s (82% eff)         │ 

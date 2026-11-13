@@ -173,3 +173,32 @@ Remaining work is verification and follow-up, in this order:
 - Run in this phase: `gofmt -l .`, `go build ./...`, `go vet ./...`,
   `go vet -tags integration ./internal/runner`, `go test ./... -count=1`,
   `go test ./... -race -count=1`.
+
+## Addendum (post-chain): elevation UX, size units, column naming
+
+- **Elevation without restarting.** `E` (global, gated like every other letter
+  key) suspends the TUI with `tea.ExecProcess` and runs `sudo <exe> info -json`.
+  sudo prompts on the terminal, the JSON is captured on stdout (no temp files,
+  nothing root-owned in the state dir), decoded into `elevationDocument` in
+  `internal/app/elevate.go`, and applied via `SetDetected`/`SetIMC`.
+  Root processes get an informational "already root" status instead; a failed
+  or cancelled sudo run becomes a sticky error status.
+- **Clearer failure text.** An unprivileged detection miss now reads
+  `Detection needs root · press E to elevate with sudo` (sticky, error level);
+  as root the raw detection reason is shown. The Timings guidance panel says
+  `R retry · E elevate with sudo`.
+- **Fixed duplicated size unit** (`4096 MB MB` in the header). dmidecode
+  returns `4096 MB` while decode-dimms returns bare numbers, so
+  `memory.SPDInfo.SizeLabel()` is now the single formatter; the header summary,
+  SPD panel and `info` all use it.
+- **Renamed the editor's `Delta` column to `Margin`.** It shows the signed
+  distance to the nearest safe bound, not the change since detection, which
+  made `+1` next to two equal values read as a bug. Golden views regenerated.
+- Tests: `internal/app/elevate_test.go` (applies payload, failure, hint text,
+  `E` gating), `internal/memory/detect_test.go` (SizeLabel).
+- Verification: `gofmt -l .` clean, `go build ./...`, `go vet ./...`,
+  `go test ./... -count=1`, `go test ./... -race`, plus `GOOS=windows go build
+  ./...`. Golden views regenerated with `-run TestGolden -update`.
+- Unverified: the interactive sudo password prompt path (no TTY session in this
+  run); the first real use should be watched. The unprivileged branch, the JSON
+  round-trip shape, and the root/no-sudo guards are covered by tests.

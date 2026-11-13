@@ -34,7 +34,7 @@ func (m *Model) spdLines() []string {
 		line("Part number", s.PartNumber),
 		line("Module type", s.ModuleType),
 		line("Memory type", s.MemoryType),
-		line("Size", s.SizeMB+" MB"),
+		line("Size", s.SizeLabel()),
 		line("Ranks", s.Ranks),
 		line("DIMMs", s.NumDIMMs),
 		"",
@@ -80,8 +80,8 @@ func (m *Model) spdSummary() string {
 		return ""
 	}
 	parts := []string{}
-	for _, p := range []string{m.spd.ModuleSpeed, m.spd.SizeMB + " MB", m.spd.PartNumber} {
-		if strings.TrimSpace(p) != "" && p != " MB" {
+	for _, p := range []string{m.spd.ModuleSpeed, m.spd.SizeLabel(), m.spd.PartNumber} {
+		if strings.TrimSpace(p) != "" {
 			parts = append(parts, p)
 		}
 	}

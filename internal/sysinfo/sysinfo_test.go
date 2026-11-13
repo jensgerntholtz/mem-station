@@ -465,7 +465,7 @@ func TestViewIsExactSize(t *testing.T) {
 func TestEditorColumns(t *testing.T) {
 	m := detectedModel(t)
 	out := m.View(78, 21)
-	for _, want := range []string{"Setting", "Detected", "Draft", "Delta", "Safety"} {
+	for _, want := range []string{"Setting", "Detected", "Draft", "Margin", "Safety"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("editor is missing the %q column header:\n%s", want, out)
 		}

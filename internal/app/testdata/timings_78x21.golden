@@ -2,7 +2,7 @@
    1 Timings    2 Benchmark    3 Burn-in                                        
  ╭────────────────────────────────────────────────────────────────────────────╮ 
  │ Timings                                                                    │ 
- │ Setting           Detected   Draft      Delta     Safety                   │ 
+ │ Setting           Detected   Draft      Margin    Safety                   │ 
  │ General                                                                    │ 
  │ Channels          2          2          +1        ok                       │ 
  │ DRAM Ratio        16         16                                            │ 

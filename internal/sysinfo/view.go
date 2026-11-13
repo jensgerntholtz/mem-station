@@ -176,7 +176,7 @@ func (m *Model) editorHeader(widths []int) string {
 		lipgloss.NewStyle().Bold(true).Foreground(th.Label).Render("Setting"),
 		lipgloss.NewStyle().Bold(true).Foreground(th.Muted).Render("Detected"),
 		lipgloss.NewStyle().Bold(true).Foreground(th.Muted).Render("Draft"),
-		lipgloss.NewStyle().Bold(true).Foreground(th.Muted).Render("Delta"),
+		lipgloss.NewStyle().Bold(true).Foreground(th.Muted).Render("Margin"),
 		lipgloss.NewStyle().Bold(true).Foreground(th.Muted).Render("Safety"),
 	}
 	return ui.JoinColumns([][]string{cells}, widths)
@@ -363,7 +363,7 @@ func (m *Model) guideBody(width int) string {
 	case m.detectMsg != "":
 		lines = append(lines, style.Warning().Render("unavailable"),
 			style.Muted().Render(ui.Truncate(m.detectMsg, width, true)),
-			style.Muted().Render("R retries detection."))
+			style.Muted().Render("R retry  ·  E elevate with sudo"))
 	default:
 		lines = append(lines, style.Muted().Render("waiting for detection..."))
 	}

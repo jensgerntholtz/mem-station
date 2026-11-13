@@ -30,7 +30,10 @@ CPU: Intel(R) Core(TM) i5-4670K (4) @ 4.00 GHz
 - A terminal of at least 80x24
 
 Detection failing is not fatal: the app starts immediately, shows what it could
-not read, and allows manual entry.
+not read, and allows manual entry. When detection needs root, press `E` in the
+TUI to re-run it through `sudo` without restarting: the program releases the
+terminal, `sudo` prompts for a password, and the privileged result is loaded
+back into the Timings tab. `R` retries unprivileged detection.
 
 ## Build and run
 
@@ -67,7 +70,8 @@ Global keys work whenever no text input or modal owns the keyboard.
 | `F1`/`F2`/`F3`, `ctrl+1..3` | switch tabs from anywhere |
 | `1`/`2`/`3` | switch tabs when not editing |
 | `?` | help overlay; `esc` closes it |
-| `R` | retry hardware detection |
+| `R` | retry hardware detection (unprivileged) |
+| `E` | elevate: re-run detection through `sudo`, then reload it |
 | `ctrl+c` | cancel a running job, otherwise quit |
 | `q` | quit when not editing and no overlay is open |
 
