@@ -86,6 +86,14 @@ Expected:
 - Key gating tests: `q` while editing does not quit; plain `1/2/3` while
   editing types digits; `?` opens help; `esc` closes modal before cancelling a
   draft.
+- Bubble Tea v2 specifics (manual, in a real terminal):
+  - `space` now arrives as `"space"` rather than `" "`, so any space handling
+    and the text inputs need a once-over by hand.
+  - `shift+tab` still steps backwards through the timing fields.
+  - `esc` still cancels the edit/modal (and is not eaten as an alt sequence).
+  - Bracketed paste into the timing editor and the profile path prompts.
+  - `--mouse` wheel scrolling, `--no-color`, and `NO_COLOR=1`.
+  - Alt screen is entered and restored on quit; the window title is set.
 
 CI (`.github/workflows/ci.yml`) runs gofmt, `go vet ./...`, `go build ./...`,
 and `go test ./... -count=1` on `ubuntu-latest`. CI does not run hardware, the

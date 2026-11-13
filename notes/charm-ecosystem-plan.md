@@ -1,12 +1,13 @@
 # Plan: lean into the Charmbracelet ecosystem
 
-Status: proposal, not started.
+Status: P0 (guardrails) and P1 (v2 stack migration) are **done**. P2 onward is
+open.
 Scope: which `github.com/charmbracelet` repos and libraries apply to MemStation,
 what each buys us, and in what order to adopt them.
 
-Current stack (from `go.mod`): `bubbletea v1.3.10`, `bubbles v1.0.0`,
-`lipgloss v1.1.0`, plus transitive `x/ansi`, `x/cellbuf`, `x/term`,
-`colorprofile`. Go directive `1.26.2`, local toolchain `1.27.3`.
+Current stack (from `go.mod`): `charm.land/bubbletea/v2 v2.1.1`,
+`charm.land/bubbles/v2 v2.2.1`, `charm.land/lipgloss/v2 v2.1.0`, plus
+`x/ansi` and transitive `colorprofile`/`ultraviolet`. Go directive `1.26.7`.
 
 ---
 
@@ -57,9 +58,9 @@ All 57 repos returned by `GET /orgs/charmbracelet/repos` (Nov 2026), plus the
 
 | Repo / module | Latest | Used today | Plan |
 | --- | --- | --- | --- |
-| `bubbletea` → `charm.land/bubbletea/v2` | v1.3.10 / v2.1.1 | v1 direct | **P1** migrate |
-| `lipgloss` → `charm.land/lipgloss/v2` | v1.1.0 / v2.1.0 | v1 direct | **P1** migrate + compositor |
-| `bubbles` → `charm.land/bubbles/v2` | v1.0.0 / v2.2.1 | v1 direct (`key`, `textinput`, `viewport`) | **P1** migrate; **P3** add `list`, `filepicker`, `table`, `textarea` |
+| `bubbletea` → `charm.land/bubbletea/v2` | v1.3.10 / v2.1.1 | **v2 direct** | done (P1) |
+| `lipgloss` → `charm.land/lipgloss/v2` | v1.1.0 / v2.1.0 | **v2 direct** | done (P1); compositor still open |
+| `bubbles` → `charm.land/bubbles/v2` | v1.0.0 / v2.2.1 | **v2 direct** (`key`, `textinput`, `viewport`) | done (P1); **P3** adds `list`, `filepicker`, `table`, `textarea` |
 | `colorprofile` | v0.4.3 | transitive | **P1** use explicitly (`--no-color`, deterministic tests) |
 | `x/ansi` | v0.11.9 | direct | keep |
 | `x/cellbuf` | v0.0.15 | transitive | keep (v2 replaces it internally) |
@@ -144,49 +145,47 @@ Landed in `2fba2ae`; the pre-P0 commit is tagged `baseline-pre-charm`.
 Done criteria met: clean tree, green `make check`/`make race`/`make
 integration`, diffable golden baseline.
 
-### P1 — Bubble Tea v2 / Lip Gloss v2 / Bubbles v2 (2-3 days)
+### P1 — Bubble Tea v2 / Lip Gloss v2 / Bubbles v2 (2-3 days) — **done**
 
-Go module changes:
+Landed in `8609f28`. Modules:
 
 ```
 charm.land/bubbletea/v2  v2.1.1
 charm.land/bubbles/v2    v2.2.1
 charm.land/lipgloss/v2   v2.1.0
-github.com/charmbracelet/colorprofile v0.4.3
+github.com/charmbracelet/colorprofile v0.4.3 (indirect)
 ```
 
-Remove `github.com/charmbracelet/{bubbletea,bubbles,lipgloss}` v1 entirely;
-do not let two lipgloss color systems into `internal/style`.
+The v1 modules are gone; `internal/style` has one color system. All screens are
+unchanged: the suite passes with **zero golden updates**.
 
-Code impact (measured):
+What actually changed, versus the estimate:
 
-| Area | Files | Change |
-| --- | --- | --- |
-| key handling | 12 files, 136 `KeyMsg`/`WindowSizeMsg` matches | `tea.KeyMsg` → `tea.KeyPressMsg`; `" "` → `"space"` in text input paths |
-| root view | `internal/app/view.go` | `View() string` → `View() tea.View`; set `AltScreen`, `MouseMode` from `Options`, `WindowTitle` |
-| tab contract | `internal/app/app.go` | unchanged: `Tab.View(w, h) string` stays, so the blast radius is the root only |
-| program options | `internal/cli/tui.go` | drop `tea.WithAltScreen()`/`WithMouseCellMotion()`; `tea.WithColorProfile` when `--no-color` |
-| viewport | `sysinfo`, `benchmark`, `burnin` models | `viewport.New(viewport.WithWidth(w), viewport.WithHeight(h))`, `SetWidth/SetHeight`, `SetYOffset`, `Width()/Height()` |
-| textinput | `sysinfo`, `benchmark`, `burnin` models | `SetWidth`, `textinput.DefaultKeyMap()`, `Styles` struct |
-| theme | `internal/style/style.go`, `internal/ui/ui.go` | `lipgloss.Color` now returns `image/color.Color`; replace `AdaptiveColor` with `compat.AdaptiveColor` or `lipgloss.LightDark`; helpers return `color.Color` |
-| tests | `internal/uitest`, all `*_test.go` | force a fixed color profile so goldens are terminal-independent |
+| Area | Reality |
+| --- | --- |
+| key handling | `tea.KeyMsg` → `tea.KeyPressMsg`; printable input is a string, so the timing-field filter rewrites `Key.Text` instead of `Key.Runes` |
+| root view | `View() tea.View` + `render()`; `AltScreen`, `WindowTitle`, `MouseMode` declared on the view; tests read `View().Content` |
+| tab contract | untouched: `Tab.View(w, h) string` stayed, so the blast radius was the root only |
+| program options | `internal/cli/tui.go` is option-free; `--no-color` works because `colorprofile.Detect` reads the `NO_COLOR` that `style.UsePlainOutput` sets (no explicit profile needed) |
+| viewport | `viewport.New(WithWidth, WithHeight)`, `SetWidth/SetHeight`, `Width()/Height()`; `LineDown/LineUp` became `ScrollDown/ScrollUp`, which short-circuit at their own end, so the scroll direction is now chosen explicitly |
+| textinput | `SetWidth`; the project sets no styles, so the `Styles` struct never came up |
+| theme | `AdaptiveColor` deleted rather than shimmed: every token held the same color in both modes, so the theme is plain `color.Color` and `--dark` picks the palette |
+| ui panels | **the one real trap**: in lipgloss v2 `Width`/`Height` include border and padding, so `Panel`/`HelpOverlay`/`Modal` ask for the full block size instead of `w-2`/`h-2`. This is what kept the goldens byte-identical |
+| tests | `internal/uitest` gained `Key`/`Code`/`Ctrl`/`Wheel` helpers; goldens still strip ANSI, so pinning a color profile was unnecessary |
 
-Behaviour gains to land in the same phase (cheap, no new deps):
+Verified beyond the unit tests: a pty smoke run paints the shell, sets the
+window title, restores the alt screen, exits `0` on `q`, and `--no-color`
+suppresses SGR color while keeping bold.
 
-- Overlay modals/help with `lipgloss.NewLayer` + `Compositor` instead of
-  swapping the body (`internal/app/view.go`), so the active tab stays visible
-  and dimmed behind the apply review and help.
-- `tea.PasteMsg` support for the profile path prompts (`ctrl+e`/`ctrl+o`).
-- Native `View.ProgressBar` during bench/burn-in (terminal taskbar progress, no
-  golden change).
+Deliberately deferred to P3 (not "cheap" after all):
 
-Risks: golden churn from the new width/color engine; expected, review diffs.
-`tea.ExecProcess` still exists in v2, so `internal/app/elevate.go` is untouched.
-
-Acceptance: `gofmt -l .` empty, `go vet ./...`, `go build ./...`,
-`go test ./... -count=1` green; goldens either identical or reviewed and
-committed one view per commit; `--mouse`, `--no-color`, `--dark=false`,
-`E` (sudo elevation) and `ctrl+c` still behave.
+- Overlay compositing with `lipgloss.NewLayer`/`Compositor`. It changes the help
+  and apply-review goldens by design and needs a dimming decision, so it belongs
+  with the visual work, not the mechanical migration.
+- Native `View.ProgressBar`: it needs a progress fraction on the tab contract
+  (`Tab` only exposes `Running()` today).
+- Paste into the profile prompts already works for free (`tea.PasteMsg` reaches
+  the text input), so no code was needed.
 
 ### P2 — CLI: fang v2 + log v2 + charmtone (1-2 days)
 
@@ -261,10 +260,18 @@ reuses the existing export schema rather than inventing a second one.
 
 ### P6 — Verification
 
-Extend `notes/verification-plan.md`: v2 key table (`space`, `shift+tab`, `esc`,
-paste), overlay compositing at 80x24/120x40/160x50, `--no-color` +
+Extend `notes/verification-plan.md`: the v2 key table (`space`, `shift+tab`,
+`esc`, paste), overlay compositing at 80x24/120x40/160x50, `--no-color` +
 `NO_COLOR` + `CLICOLOR=0`, `--log-file` content, fang error exit codes, and a
 full `ctrl+p`→`ctrl+l`→`ctrl+e` profile round-trip.
+
+Already covered by P1, so the manual matrix no longer needs to prove it:
+
+- The v2 stack builds, renders the same frames (zero golden diffs), and runs
+  under a real pty: alt screen enters and restores, the window title is set, `q`
+  exits `0`.
+- `NO_COLOR=1` suppresses SGR color while keeping bold, through
+  `colorprofile.Detect` rather than a custom flag path.
 
 ---
 
@@ -272,7 +279,8 @@ full `ctrl+p`→`ctrl+l`→`ctrl+e` profile round-trip.
 
 1. **Two module paths exist simultaneously** (`github.com/charmbracelet/...`
    and `charm.land/...`). Pin the `charm.land` vanity paths for v2 and remove
-   v1 in the same commit, so `go.mod` cannot drift into a mixed stack.
+   v1 in the same commit, so `go.mod` cannot drift into a mixed stack. Done in
+   P1: the v1 modules are gone from `go.mod`.
 2. **Go directive bump.** bubbletea v2 needs go 1.26.0. CI uses
    `go-version-file: go.mod`; the local toolchain is already 1.27.3.
 3. **Single-dash flags are documented.** fang/pflag will misparse `-json` as a
@@ -280,7 +288,8 @@ full `ctrl+p`→`ctrl+l`→`ctrl+e` profile round-trip.
    mandatory, not optional.
 4. **Golden churn is expected** from v2's width and color engine. Mitigate with
    ANSI stripping (already in `internal/uitest`), a forced color profile in
-   tests, and one reviewed view per commit.
+   tests, and one reviewed view per commit. Outcome: no churn at all once
+   `ui.Panel` asked for the full block size.
 5. **teatest cannot validate a v2 program.** Use `tea.WithWindowSize` +
    `tea.WithColorProfile` and drive the root model directly; keep the existing
    message-pushing tests.
@@ -292,10 +301,10 @@ full `ctrl+p`→`ctrl+l`→`ctrl+e` profile round-trip.
 
 ## 5. Recommended next slice
 
-P0 is done. Do **P1 only**, as one branch (`charm-v2`), no new features. That
-establishes the migration pattern, burns down the golden churn, and makes every
-later phase a small addition rather than a rewrite. If that lands cleanly, P2
-(CLI) is the highest visible-value follow-up.
+P0 and P1 are done. Next is **P2 (fang v2 + log v2 + charmtone)**: it needs no
+rendering changes and is the highest visible-value CLI work left. P3's first
+sliver should be the overlay compositor, since it is the one v2 feature the
+migration had to leave on the table.
 
 ---
 
