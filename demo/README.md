@@ -9,14 +9,16 @@ This is a developer convenience. Nothing here runs in CI.
 ./demo/record.sh bench.tape   # record one
 ```
 
-Output lands in `demo/*.gif`. The GIFs are generated files: they are not
-committed by default, though nothing stops you committing the ones you want to
-publish.
+Output lands in `demo/*.gif`. The GIFs are generated files and gitignored by
+default; the one exception is `demo/frontpage.gif`, which the README embeds, so
+re-recording `frontpage.tape` changes a tracked file. Publish any other demo
+with `git add -f demo/<name>.gif`.
 
 ## What the tapes show
 
 | Tape | Content |
 | --- | --- |
+| `frontpage.tape` | The README hero: Timings workspace into the apply review, launched while hidden so the first frame is the app. Committed as `demo/frontpage.gif`. |
 | `timings.tape` | Semantic arrow-key steps, the ratio lock rescaling timings, the apply review overlay, the SPD/IMC views, the help overlay |
 | `bench.tape` | Benchmark run: live log, parsed results with deltas, history |
 | `burnin.tape` | Preset cycling, a burn-in run, the pass verdict and error counter |

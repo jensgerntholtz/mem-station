@@ -52,3 +52,5 @@ demo/.tools/
 demo/.build/
 demo/.state/
 demo/*.gif
+# The README embeds this one, so it is tracked: `git add demo/frontpage.gif`.
+!demo/frontpage.gif

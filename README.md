@@ -3,6 +3,12 @@
 A Linux terminal workspace for memory overclocking enthusiasts: inspect timings,
 sketch a profile, measure bandwidth, and burn in a memory configuration.
 
+<img width="1126" alt="MemStation's Timings workspace: a table of settings with detected, draft, margin and safety columns, a guidance panel with live performance projection, and an apply review dialog listing the timing diffs and the note that timings are written to a profile, not to hardware" src="demo/frontpage.gif">
+
+*The Timings workspace: detected, draft, margin and safety per setting, live
+performance guidance, and the apply review. Values in the recording are seeded;
+hardware detection needs root.*
+
 **Profile only.** MemStation never writes MSRs, BIOS, or hardware timings. An
 apply saves a profile file; the command line says so, and the apply review says
 so.
@@ -15,8 +21,6 @@ Current build is only verified on
 OS: CachyOS x86_64  
 Kernel: Linux 7.0.1-1-cachyos  
 CPU: Intel(R) Core(TM) i5-4670K (4) @ 4.00 GHz  
-
-<img width="1282" height="719" alt="image" src="https://github.com/user-attachments/assets/171b24f0-f9ce-48af-8bba-4a35eba3275e" />
 
 ## Requirements
 
