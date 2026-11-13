@@ -115,7 +115,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// A modal or an active text input owns every key except the three handled
 	// above; the tab decides what esc/enter/tab mean.
 	if active.ModalOpen() || active.Editing() {
-		return active.Update(msg)
+		cmd := active.Update(msg)
+		if m.active == 0 {
+			// A confirmed apply inside the modal changes the applied profile.
+			m.syncSnapshot()
+		}
+		return cmd
 	}
 
 	switch {

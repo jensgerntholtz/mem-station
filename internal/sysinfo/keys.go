@@ -45,13 +45,16 @@ func DefaultKeyMap() KeyMap {
 
 // Keys returns the context hints for the footer.
 func (m *Model) Keys() []ui.KeyHint {
-	if m.editing {
+	switch {
+	case m.modal != modalNone:
+		return []ui.KeyHint{{Key: "enter", Action: "confirm"}, {Key: "esc", Action: "cancel"}}
+	case m.editing:
 		return hints(m.keys.Edit, m.keys.Cancel, m.keys.Next)
-	}
-	if m.subView != subTimings {
+	case m.subView != subTimings:
 		return hints(m.keys.ScrollUp, m.keys.ScrollDn, m.keys.PrevView, m.keys.NextView)
+	default:
+		return hints(m.keys.Up, m.keys.Edit, m.keys.Next, m.keys.RatioLock, m.keys.Apply, m.keys.NextView)
 	}
-	return hints(m.keys.Up, m.keys.Edit, m.keys.Next, m.keys.RatioLock, m.keys.Apply, m.keys.NextView)
 }
 
 // Help returns the tab's help sections.
@@ -62,6 +65,15 @@ func (m *Model) Help() []ui.HelpSection {
 		{Key: "esc", Action: "close help"},
 		{Key: "q", Action: "quit"},
 	}}
+	if m.modal != modalNone {
+		return []ui.HelpSection{
+			{Title: "Apply review", Rows: []ui.KeyHint{
+				{Key: "enter", Action: "save the active profile"},
+				{Key: "esc", Action: "cancel the apply"},
+			}},
+			global,
+		}
+	}
 	if m.editing {
 		return []ui.HelpSection{
 			{Title: "Editing", Rows: hints(m.keys.Edit, m.keys.Cancel, m.keys.Next, m.keys.Prev)},
@@ -77,8 +89,12 @@ func (m *Model) Help() []ui.HelpSection {
 		m.keys.Up, m.keys.Down, m.keys.Edit, m.keys.Cancel, m.keys.Next, m.keys.Prev,
 		m.keys.RatioLock, m.keys.Apply, m.keys.ResetAll,
 	)}
+	apply := ui.HelpSection{Title: "Apply", Rows: []ui.KeyHint{
+		{Key: "ctrl+s", Action: "review the diff, then enter to save"},
+		{Key: "esc", Action: "revert the draft / cancel the review"},
+	}}
 	views := ui.HelpSection{Title: "Views", Rows: hints(m.keys.PrevView, m.keys.NextView, m.keys.ScrollUp, m.keys.ScrollDn)}
-	return []ui.HelpSection{tab, views, global}
+	return []ui.HelpSection{tab, apply, views, global}
 }
 
 func hints(bindings ...key.Binding) []ui.KeyHint {

@@ -1,14 +1,17 @@
-// Package sysinfo implements the Timings tab: the timing editor, the perf
-// guidance panel, and the SPD/IMC read-only sub-views.
+// Package sysinfo implements the Timings tab: the timing editor, the perf and
+// guidance panel, the apply review modal, and the SPD/IMC read-only sub-views.
 //
-// It never imports internal/app. Phase 1 keeps the Phase 0 label-keyed field
-// model; Phase 2 replaces the label lookups with typed fields and an explicit
-// detected/draft/applied state.
+// Values are keyed by FieldID (see fields.go) and kept as strings so "2T" and
+// "1.35" survive a round-trip through the profile store. Three maps hold the
+// tab state: detected (hardware), applied (the active profile, or the detected
+// values when no profile exists), and draft (what the user is editing).
+//
+// It never imports internal/app.
 package sysinfo
 
 import (
-	"strconv"
 	"strings"
+	"time"
 
 	"mem-station/internal/config"
 	"mem-station/internal/memory"
@@ -20,23 +23,6 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-// field is one editable timing value.
-type field struct {
-	label string // stable display label and internal id (Phase 2: FieldID)
-	key   string // canonical config key used for persistence
-	hint  string // last detected (or fallback) value
-	desc  string
-	input textinput.Model
-}
-
-// fieldBounds is a validated numeric range for a field.
-type fieldBounds struct {
-	min, max float64
-	note     string
-	hasMin   bool
-	hasMax   bool
-}
 
 // subView selects which read-only or editable panel the tab shows.
 type subView int
@@ -58,15 +44,28 @@ func (s subView) String() string {
 	}
 }
 
+// modalState tracks the open modal, if any.
+type modalState int
+
+const (
+	modalNone modalState = iota
+	modalApply
+)
+
 // Model is the Timings tab.
 type Model struct {
-	fields     []field
+	fields []Field
+
+	draft    map[FieldID]string
+	applied  map[FieldID]string
+	detected map[FieldID]string
+
 	focus      int
 	editing    bool
-	prevValue  string
+	editPrev   string
+	input      textinput.Model
 	lockRatios bool
 
-	detected  bool
 	detectMsg string
 
 	subView subView
@@ -74,117 +73,104 @@ type Model struct {
 	imc     []memory.IMCTimings
 	imcNote string
 
-	applied map[string]string // label -> applied value; nil when no profile
-
 	spdVP viewport.Model
 	imcVP viewport.Model
+
+	modal modalState
 
 	keys KeyMap
 }
 
-// fieldDefs is the Phase 1 field list: label, config key, fallback, help text.
-var fieldDefs = []struct {
-	label, key, fallback, desc string
-}{
-	{"Channels", config.KeyChannels, "2", "Detected memory channels."},
-	{"DRAM Ratio", config.KeyRatio, "?", "Memory multiplier relative to base clock."},
-	{"DRAM Freq", config.KeyFreq, "1600", "Effective DRAM frequency in MT/s."},
-	{"CAS (tCL)", config.KeyCL, "?", "CAS latency in cycles."},
-	{"tRCD", config.KeyRCD, "?", "RAS to CAS delay in cycles."},
-	{"tRP", config.KeyRP, "?", "Row precharge delay in cycles."},
-	{"tRAS", config.KeyRAS, "?", "Active to precharge delay in cycles."},
-	{"Command Rate", config.KeyCR, "2T", "Command rate; usually 1T or 2T."},
-	{"tRFC", config.KeyRFC, "?", "Refresh cycle time in cycles."},
-	{"DRAM Voltage", config.KeyVoltage, "?", "Requested memory rail voltage."},
-}
-
-// New builds the Timings tab, loading the applied profile if one exists.
+// New builds the Timings tab, loading the applied profile if one exists. The
+// draft starts at the applied values, or at the field placeholders until
+// detection arrives.
 func New() *Model {
-	base := textinput.New()
-	base.Prompt = "" // the label column already shows which field is focused
-	base.CharLimit = 8
-	base.Width = 8
-
 	applied := loadApplied()
-
-	fields := make([]field, 0, len(fieldDefs))
-	for _, def := range fieldDefs {
-		value := def.fallback
-		if applied != nil {
-			if v, ok := applied[def.label]; ok {
-				value = v
-			}
+	draft := make(map[FieldID]string, len(fields))
+	for _, f := range fields {
+		if v, ok := applied[f.ID]; ok {
+			draft[f.ID] = v
+			continue
 		}
-		in := base
-		in.SetValue(value)
-		in.Placeholder = def.fallback
-		fields = append(fields, field{
-			label: def.label,
-			key:   def.key,
-			hint:  def.fallback,
-			desc:  def.desc,
-			input: in,
-		})
+		draft[f.ID] = f.Default
 	}
 
+	in := textinput.New()
+	in.Prompt = "" // the label column already shows which field is focused
+	in.CharLimit = 8
+	in.Width = draftColW - 1
+
 	return &Model{
-		fields:     fields,
-		lockRatios: true,
+		fields:     Fields(),
+		draft:      draft,
 		applied:    applied,
+		detected:   map[FieldID]string{},
+		input:      in,
+		lockRatios: true,
 		spdVP:      viewport.New(60, 10),
 		imcVP:      viewport.New(60, 10),
 		keys:       DefaultKeyMap(),
 	}
 }
 
-// loadApplied loads the active profile as label -> value. It returns nil when
+// loadApplied loads the active profile as FieldID -> value. It returns nil when
 // no profile exists or it contains no recognised values.
-func loadApplied() map[string]string {
+func loadApplied() map[FieldID]string {
 	p, ok, err := store.LoadActiveProfile()
 	if err != nil || !ok {
 		return nil
 	}
-	applied := map[string]string{}
-	for _, def := range fieldDefs {
-		if v := p.Values[def.key]; v != "" {
-			applied[def.label] = v
+	out := map[FieldID]string{}
+	for _, f := range fields {
+		if v := strings.TrimSpace(p.Values[f.Key]); v != "" {
+			out[f.ID] = v
 		}
 	}
-	if len(applied) == 0 {
+	if len(out) == 0 {
 		return nil
 	}
-	return applied
+	return out
 }
 
 // Init implements tea.Model; detection is owned by the root shell.
 func (m *Model) Init() tea.Cmd { return nil }
 
-// SetDetected merges a hardware detection result into the editor.
+// SetDetected installs a hardware detection result. Detection keys may be field
+// IDs, config keys, or the labels used by memory.DetectDefaults; all three are
+// resolved here so the shell never needs to know field names.
 func (m *Model) SetDetected(vals map[string]string, msg string, spd *memory.SPDInfo) {
 	m.detectMsg = msg
 	m.spd = spd
-	m.detected = len(vals) > 0
-	if spd != nil {
-		m.spdVP.SetContent(strings.Join(m.spdLines(), "\n"))
-	}
-	if !m.detected {
-		return
-	}
-	for i := range m.fields {
-		v, ok := vals[m.fields[i].label]
-		if !ok || v == "" {
+	for _, f := range m.fields {
+		v := detectedValue(vals, f)
+		if v == "" {
 			continue
 		}
-		oldHint := m.fields[i].hint
-		m.fields[i].hint = v
-		m.fields[i].input.Placeholder = v
-		// Only follow detection while the value is still the untouched
-		// fallback/applied value; never overwrite a user edit.
-		if m.fields[i].input.Value() == oldHint {
-			m.fields[i].input.SetValue(v)
+		previous := m.baseline(f.ID)
+		m.detected[f.ID] = v
+		if _, hasApplied := m.applied[f.ID]; hasApplied {
+			continue // an applied profile wins over detection
+		}
+		if m.editing && m.fields[m.focus].ID == f.ID {
+			continue // never overwrite a value being typed
+		}
+		if m.draft[f.ID] == previous {
+			m.draft[f.ID] = v
 		}
 	}
-	m.spdVP.SetContent(strings.Join(m.spdLines(), "\n"))
+}
+
+// detectedValue resolves one detected value for a field.
+func detectedValue(vals map[string]string, f Field) string {
+	for _, key := range []string{string(f.ID), f.Key, f.DetectLabel} {
+		if key == "" {
+			continue
+		}
+		if v := strings.TrimSpace(vals[key]); v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // SetIMC installs the IMC register dump shown in the IMC sub-view.
@@ -195,11 +181,10 @@ func (m *Model) SetIMC(timings []memory.IMCTimings, err error) {
 	} else {
 		m.imcNote = ""
 	}
-	m.imcVP.SetContent(strings.Join(m.imcLines(), "\n"))
 }
 
 // Detected reports whether hardware detection produced values.
-func (m *Model) Detected() bool { return m.detected }
+func (m *Model) Detected() bool { return len(m.detected) > 0 }
 
 // DetectMessage returns the message produced by the last detection attempt.
 func (m *Model) DetectMessage() string { return m.detectMsg }
@@ -207,8 +192,8 @@ func (m *Model) DetectMessage() string { return m.detectMsg }
 // Editing reports whether a field's text input owns letter keys.
 func (m *Model) Editing() bool { return m.editing }
 
-// ModalOpen reports whether a modal is open (the apply modal lands in Phase 2).
-func (m *Model) ModalOpen() bool { return false }
+// ModalOpen reports whether the apply review modal is open.
+func (m *Model) ModalOpen() bool { return m.modal != modalNone }
 
 // Running reports whether this tab has an active job (never for Timings).
 func (m *Model) Running() bool { return false }
@@ -218,8 +203,8 @@ func (m *Model) Wants(runner.Kind) bool { return false }
 
 // Dirty reports whether the draft differs from the applied values.
 func (m *Model) Dirty() bool {
-	for i := range m.fields {
-		if m.fields[i].input.Value() != m.baseline(m.fields[i].label) {
+	for _, f := range m.fields {
+		if m.draft[f.ID] != m.baseline(f.ID) {
 			return true
 		}
 	}
@@ -229,8 +214,11 @@ func (m *Model) Dirty() bool {
 // Blur commits any in-progress edit.
 func (m *Model) Blur() { m.commitEdit() }
 
-// Stop cancels any running job (the Timings tab owns none).
-func (m *Model) Stop() {}
+// Stop closes any modal and cancels any running job (the Timings tab owns none).
+func (m *Model) Stop() {
+	m.modal = modalNone
+	m.commitEdit()
+}
 
 // Title returns the tab title.
 func (m *Model) Title() string { return "Timings" }
@@ -241,113 +229,51 @@ func (m *Model) SubViewTitle() string { return m.subView.String() }
 // Summary returns a short hardware summary for the header.
 func (m *Model) Summary() string { return m.spdSummary() }
 
-// Snapshot returns the current applied-plus-draft values as a config snapshot
-// for the run tabs and the perf projection.
+// Snapshot returns the configuration the run tabs should attribute a run to:
+// the applied profile when one exists, otherwise the detected values.
 func (m *Model) Snapshot() config.Snapshot {
-	vals := map[string]string{}
-	for i := range m.fields {
-		vals[m.fields[i].key] = m.fields[i].input.Value()
+	source := "applied"
+	if m.applied == nil {
+		source = "detected"
 	}
-	return config.Snapshot{Values: vals, Source: "draft"}
+	vals := make(map[string]string, len(m.fields))
+	for _, f := range m.fields {
+		vals[f.Key] = m.baseline(f.ID)
+	}
+	return config.Snapshot{Values: vals, CapturedAt: time.Now(), Source: source}
 }
 
 // baseline returns the value a field reverts to: the applied value, else the
-// detected value, else the fallback.
-func (m *Model) baseline(label string) string {
-	if m.applied != nil {
-		if v, ok := m.applied[label]; ok {
-			return v
-		}
+// detected value, else the field placeholder.
+func (m *Model) baseline(id FieldID) string {
+	if v, ok := m.applied[id]; ok {
+		return v
 	}
-	for i := range m.fields {
-		if m.fields[i].label == label {
-			return m.fields[i].hint
-		}
+	if v, ok := m.detected[id]; ok {
+		return v
+	}
+	if f, ok := LookupField(id); ok {
+		return f.Default
 	}
 	return ""
 }
 
-/* --------------- Field helpers --------------- */
+// context returns a validation context over the draft values.
+func (m *Model) context() ValidationContext {
+	return NewValidationContext(m.draft)
+}
 
-func (m *Model) fieldIndex(label string) int {
+// issues validates the draft.
+func (m *Model) issues() []Issue { return Validate(m.context()) }
+
+// fieldIndex returns the position of id in the field list, or -1.
+func (m *Model) fieldIndex(id FieldID) int {
 	for i := range m.fields {
-		if m.fields[i].label == label {
+		if m.fields[i].ID == id {
 			return i
 		}
 	}
 	return -1
-}
-
-// parseField returns the numeric value of a field, falling back to the
-// detected value when the draft is empty or unknown.
-func (m *Model) parseField(label string) (float64, bool) {
-	i := m.fieldIndex(label)
-	if i < 0 {
-		return 0, false
-	}
-	if v, ok := parseNumber(m.fields[i].input.Value()); ok {
-		return v, true
-	}
-	return parseNumber(m.fields[i].hint)
-}
-
-func (m *Model) detectedField(label string) float64 {
-	i := m.fieldIndex(label)
-	if i < 0 {
-		return 0
-	}
-	v, _ := parseNumber(m.fields[i].hint)
-	return v
-}
-
-func (m *Model) applyDetectedValues() map[string]string {
-	out := map[string]string{}
-	for i := range m.fields {
-		out[m.fields[i].label] = m.fields[i].input.Value()
-	}
-	return out
-}
-
-// parseNumber extracts the leading numeric prefix of a value ("2T" -> 2,
-// "1.35V" -> 1.35, "1600" -> 1600, "?" -> not ok).
-func parseNumber(s string) (float64, bool) {
-	s = strings.TrimSpace(s)
-	if s == "" || s == "?" {
-		return 0, false
-	}
-	if v, err := strconv.ParseFloat(s, 64); err == nil {
-		return v, true
-	}
-	var b strings.Builder
-	dot := false
-	for _, r := range s {
-		switch {
-		case r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r == '.' && !dot:
-			b.WriteRune(r)
-			dot = true
-		default:
-			goto done
-		}
-	}
-done:
-	if b.Len() == 0 {
-		return 0, false
-	}
-	v, err := strconv.ParseFloat(b.String(), 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
-}
-
-func parseUnsignedInt(s string) (int, bool) {
-	v, ok := parseNumber(s)
-	if !ok || v <= 0 {
-		return 0, false
-	}
-	return int(v), true
 }
 
 // message is the status message a tab wants the root shell to show.

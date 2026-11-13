@@ -2,6 +2,7 @@ package sysinfo
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -16,6 +17,9 @@ import (
 // Update handles messages for the Timings tab and returns any follow-up
 // command. Status text is reported to the root shell as ui.StatusMsg.
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
+	if m.modal != modalNone {
+		return m.updateModal(msg)
+	}
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if !ok {
 		// Cursor blink and paste messages belong to the focused input.
@@ -37,7 +41,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			return message("Edit cancelled.", ui.LevelInfo)
 		case key.Matches(msg, m.keys.Edit):
 			m.commitEdit()
-			return message("Value committed.", ui.LevelInfo)
+			return nil
 		case key.Matches(msg, m.keys.Next):
 			m.commitEdit()
 			m.moveFocus(1)
@@ -46,10 +50,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.commitEdit()
 			m.moveFocus(-1)
 			return nil
-		case key.Matches(msg, m.keys.Up), key.Matches(msg, m.keys.Down):
-			return m.updateInput(msg)
 		default:
-			return m.updateInputWithRatios(msg)
+			return m.updateInput(msg)
 		}
 	}
 
@@ -88,11 +90,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.RatioLock):
 		m.lockRatios = !m.lockRatios
 		if m.lockRatios {
-			return message("Ratio lock on: frequency edits rescale primary timings.", ui.LevelInfo)
+			return message("Ratio lock on: committing a DRAM freq edit rescales the primary timings.", ui.LevelInfo)
 		}
 		return message("Ratio lock off: timings are edited independently.", ui.LevelInfo)
 	case key.Matches(msg, m.keys.Apply):
-		return m.apply()
+		return m.openApply()
 	case key.Matches(msg, m.keys.ResetAll):
 		m.resetDraft()
 		return message("Draft reset to the applied values.", ui.LevelInfo)
@@ -112,26 +114,37 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 
 func (m *Model) startEditing() {
 	i := m.focus
+	f := m.fields[i]
 	m.editing = true
-	m.prevValue = m.fields[i].input.Value()
-	m.fields[i].input.CursorEnd()
-	m.fields[i].input.Focus()
+	m.editPrev = m.draft[f.ID]
+	m.input.SetValue(m.editPrev)
+	m.input.CursorEnd()
+	m.input.Focus()
 }
 
+// commitEdit ends editing and applies the frequency ratio lock, if the edited
+// field was the DRAM frequency. Rescaling happens on commit, never per
+// keystroke, so intermediate values never rewrite the sibling drafts.
 func (m *Model) commitEdit() {
 	if !m.editing {
 		return
 	}
-	m.fields[m.focus].input.Blur()
+	f := m.fields[m.focus]
+	m.input.Blur()
 	m.editing = false
+	if f.ID == FieldFreq {
+		m.rescaleFromFrequency(m.editPrev)
+	}
 }
 
 func (m *Model) cancelEdit() {
 	if !m.editing {
 		return
 	}
-	m.fields[m.focus].input.SetValue(m.prevValue)
-	m.fields[m.focus].input.Blur()
+	f := m.fields[m.focus]
+	m.draft[f.ID] = m.editPrev
+	m.input.SetValue(m.editPrev)
+	m.input.Blur()
 	m.editing = false
 }
 
@@ -140,79 +153,117 @@ func (m *Model) moveFocus(delta int) {
 	m.focus = ((m.focus+delta)%n + n) % n
 }
 
+// resetDraft restores every field to its baseline (applied, detected, default).
 func (m *Model) resetDraft() {
-	for i := range m.fields {
-		m.fields[i].input.SetValue(m.baseline(m.fields[i].label))
+	for _, f := range m.fields {
+		m.draft[f.ID] = m.baseline(f.ID)
 	}
 }
 
-// updateInput forwards a message to the focused text input.
+// updateInput forwards a message to the focused text input and mirrors the
+// input value into the draft so the renderer and Dirty() stay live.
 func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
 	if !m.editing {
 		return nil
 	}
-	i := m.focus
-	updated, cmd := m.fields[i].input.Update(msg)
-	m.fields[i].input = updated
+	updated, cmd := m.input.Update(msg)
+	m.input = updated
+	m.draft[m.fields[m.focus].ID] = m.input.Value()
 	return cmd
 }
 
-// updateInputWithRatios forwards a message to the focused input and, when the
-// edited field is the DRAM frequency, rescales the primary timings.
-func (m *Model) updateInputWithRatios(msg tea.Msg) tea.Cmd {
-	i := m.focus
-	before := m.fields[i].input.Value()
-	cmd := m.updateInput(msg)
-	if m.fields[i].label == "DRAM Freq" && m.fields[i].input.Value() != before {
-		m.rescaleFromFrequency()
-	}
-	return cmd
-}
-
-// rescaleFromFrequency scales the primary timing drafts from their detected
-// values using the current frequency draft. It is a no-op unless the ratio
-// lock is enabled.
-func (m *Model) rescaleFromFrequency() {
+// rescaleFromFrequency scales the frequency-bound drafts by the ratio between
+// the previous and the new frequency, then clamps them to their safe minimum.
+// It is a no-op unless the ratio lock is enabled.
+func (m *Model) rescaleFromFrequency(prevRaw string) {
 	if !m.lockRatios {
 		return
 	}
-	newFreq, ok := m.parseField("DRAM Freq")
+	ctx := m.context()
+	newFreq, ok := ctx.Float(FieldFreq)
 	if !ok || newFreq <= 0 {
 		return
 	}
-	baseFreq := m.detectedField("DRAM Freq")
-	if baseFreq <= 0 {
+	prevFreq, ok := parseNumber(prevRaw)
+	if !ok || prevFreq <= 0 || prevFreq == newFreq {
 		return
 	}
-	ratio := newFreq / baseFreq
-	for _, label := range []string{"CAS (tCL)", "tRCD", "tRP", "tRAS", "tRFC"} {
-		i := m.fieldIndex(label)
-		if i < 0 {
+	ratio := newFreq / prevFreq
+
+	for _, f := range m.fields {
+		if f.ID == FieldFreq || f.Scale == 0 {
 			continue
 		}
-		base, ok := parseUnsignedInt(m.fields[i].hint)
-		if !ok {
+		cur, ok := parseNumber(m.draft[f.ID])
+		if !ok || cur <= 0 {
 			continue
 		}
-		scaled := int(float64(base)*ratio + 0.5)
-		if scaled < 1 {
-			scaled = 1
+		scaled := cur * ratio * f.Scale
+		if f.Bounds != nil {
+			if b := f.Bounds(ctx); b.HasMin && scaled < b.Min {
+				scaled = b.Min
+			}
 		}
-		m.fields[i].input.SetValue(strconv.Itoa(scaled))
+		m.draft[f.ID] = formatScaled(f, scaled)
 	}
+}
+
+// formatScaled snaps a rescaled value to the field's step.
+func formatScaled(f Field, v float64) string {
+	step := f.Step
+	if step <= 0 {
+		step = 1
+	}
+	v = math.Round(v/step) * step
+	if step >= 1 {
+		return strconv.Itoa(int(math.Round(v)))
+	}
+	return strconv.FormatFloat(v, 'f', 2, 64)
 }
 
 /* --------------- Apply --------------- */
 
-// apply persists the draft as the active profile. Hardware writes are not
-// implemented; the status message says so explicitly.
-func (m *Model) apply() tea.Cmd {
+// openApply opens the review modal. Applying is a two-step flow: review, then
+// confirm.
+func (m *Model) openApply() tea.Cmd {
+	if m.subView != subTimings {
+		return message("Switch to the Timings view to apply the draft.", ui.LevelInfo)
+	}
+	m.commitEdit()
 	if !m.Dirty() {
 		return message("Nothing to apply - the draft matches the applied profile.", ui.LevelInfo)
 	}
-	values := map[string]string{}
-	for i := range m.fields {
-		values[m.fields[i].key] = m.fields[i].input.Value()
+	m.modal = modalApply
+	return nil
+}
+
+// updateModal routes keys while the apply review modal owns the input.
+func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return nil
+	}
+	switch keyMsg.String() {
+	case "enter":
+		return m.confirmApply()
+	case "esc", "q":
+		m.modal = modalNone
+		return message("Apply cancelled - nothing was saved.", ui.LevelInfo)
+	}
+	return nil
+}
+
+// confirmApply persists the draft as the active profile. Hardware writes are
+// not implemented and the confirmation says so explicitly.
+func (m *Model) confirmApply() tea.Cmd {
+	if m.modal != modalApply {
+		return nil
+	}
+	m.modal = modalNone
+
+	values := make(map[string]string, len(m.fields))
+	for _, f := range m.fields {
+		values[f.Key] = m.draft[f.ID]
 	}
 	profile := config.Profile{
 		Name:      "active",
@@ -223,8 +274,12 @@ func (m *Model) apply() tea.Cmd {
 	if err := store.SaveActiveProfile(profile); err != nil {
 		return message("Apply failed: "+err.Error(), ui.LevelError)
 	}
-	m.applied = m.applyDetectedValues()
-	return message(fmt.Sprintf("Profile only - saved %d values to the state dir; hardware was not written.", len(values)), ui.LevelWarn)
+	applied := make(map[FieldID]string, len(m.draft))
+	for id, v := range m.draft {
+		applied[id] = v
+	}
+	m.applied = applied
+	return message(fmt.Sprintf("Profile only - not written to hardware. Saved %d values to the active profile.", len(values)), ui.LevelWarn)
 }
 
 /* --------------- Sub-views --------------- */

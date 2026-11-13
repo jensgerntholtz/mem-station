@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"mem-station/internal/config"
 	"mem-station/internal/memory"
 	"mem-station/internal/ui"
 
@@ -226,6 +227,69 @@ func isQuit(cmd tea.Cmd) bool {
 		return false
 	}
 	return reflect.ValueOf(cmd).Pointer() == reflect.ValueOf(tea.Quit).Pointer()
+}
+
+// TestApplyReviewInShell drives the Phase 2 apply flow through the root shell:
+// edit, ctrl+s review, confirm, and the snapshot the run tabs receive.
+func TestApplyReviewInShell(t *testing.T) {
+	m := testModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+
+	// Edit the first field (Channels) and commit it.
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.sys.Dirty() {
+		t.Fatal("editing a field did not mark the draft dirty")
+	}
+	if out := m.View(); !strings.Contains(out, "unsaved changes") {
+		t.Errorf("header does not show the dirty marker:\n%s", out)
+	}
+
+	// ctrl+s opens the review modal; the shell keeps its exact size.
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	out := m.View()
+	for _, want := range []string{"Apply profile", "Profile only - not written to hardware"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("apply review missing %q:\n%s", want, out)
+		}
+	}
+	if got := lipgloss.Height(out); got != 30 {
+		t.Errorf("modal height = %d, want 30", got)
+	}
+	if got := lipgloss.Width(out); got != 100 {
+		t.Errorf("modal width = %d, want 100", got)
+	}
+
+	// Global keys are gated while the modal owns the input.
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	if m.helpOpen {
+		t.Error("? opened help while the apply review was open")
+	}
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); isQuit(cmd) {
+		t.Error("q quit the program from inside the apply review")
+	}
+	if m.sys.ModalOpen() {
+		t.Fatal("q did not close the apply review")
+	}
+
+	// Reopen and confirm.
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.sys.Dirty() {
+		t.Error("confirming the apply left the draft dirty")
+	}
+	if out := m.View(); strings.Contains(out, "unsaved changes") {
+		t.Errorf("dirty marker survived the apply:\n%s", out)
+	}
+
+	snap := m.snapshot()
+	if snap.Source != "applied" {
+		t.Errorf("snapshot source = %q, want applied", snap.Source)
+	}
+	if got := snap.Values[config.KeyChannels]; got != "22" {
+		t.Errorf("snapshot channels = %q, want the applied 22", got)
+	}
 }
 
 // TestQuitGating checks q quits only when no editor or overlay owns the keys.
