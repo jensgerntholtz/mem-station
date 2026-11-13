@@ -7,8 +7,9 @@ import (
 
 	"mem-station/internal/memory"
 	"mem-station/internal/ui"
+	"mem-station/internal/uitest"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestHandleElevationAppliesResult checks that the privileged `info -json`
@@ -100,7 +101,7 @@ func TestElevateKeyStartsElevation(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	_, cmd := m.Update(uitest.Key("E"))
 	if cmd == nil {
 		t.Fatal("E did not start an elevated detection run")
 	}
@@ -111,13 +112,13 @@ func TestElevateKeyStartsElevation(t *testing.T) {
 func TestElevateKeyIsIgnoredWhileEditing(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // start editing the first field
+	m.Update(uitest.Code(tea.KeyEnter)) // start editing the first field
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")})
+	_, cmd := m.Update(uitest.Key("E"))
 	if cmd != nil {
 		t.Error("E started elevation while a field was being edited")
 	}
-	if strings.Contains(m.View(), "2E") {
+	if strings.Contains(m.View().Content, "2E") {
 		t.Error("numeric field accepted a letter")
 	}
 }

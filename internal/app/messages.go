@@ -3,7 +3,7 @@ package app
 import (
 	"mem-station/internal/memory"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // detectResultMsg carries a finished hardware detection attempt.

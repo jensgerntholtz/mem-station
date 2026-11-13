@@ -9,7 +9,7 @@ import (
 	"mem-station/internal/style"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // historyColumnWidths are the aligned column widths of the history table.

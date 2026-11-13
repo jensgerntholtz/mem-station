@@ -11,7 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	ta "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // update rewrites golden files instead of comparing them.
@@ -40,6 +41,36 @@ func Update() bool {
 // StripANSI removes escape sequences so goldens do not depend on the terminal
 // color profile.
 func StripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
+
+/* --------------- key helpers --------------- */
+
+// Key builds a printable key press. It is the Bubble Tea v2 equivalent of the
+// v1 tea.KeyMsg{Type: tea.KeyRunes, Runes: ...} literal: printable input
+// carries Text, and Code mirrors the first rune.
+func Key(s string) ta.KeyPressMsg {
+	r := []rune(s)
+	k := ta.KeyPressMsg{Text: s}
+	if len(r) > 0 {
+		k.Code = r[0]
+	}
+	return k
+}
+
+// Code builds a key press for a non-printable key such as enter, esc, or an
+// arrow key.
+func Code(c rune) ta.KeyPressMsg { return ta.KeyPressMsg{Code: c} }
+
+// Ctrl builds a ctrl+<letter> key press.
+func Ctrl(c rune) ta.KeyPressMsg { return ta.KeyPressMsg{Code: c, Mod: ta.ModCtrl} }
+
+// Wheel builds a mouse wheel message; up reports the wheel direction.
+func Wheel(up bool) ta.MouseWheelMsg {
+	button := ta.MouseWheelDown
+	if up {
+		button = ta.MouseWheelUp
+	}
+	return ta.MouseWheelMsg{Button: button}
+}
 
 // Golden compares got with dir/name, creating or rewriting it when Update is
 // true. Comparison ignores ANSI sequences and trailing newlines.

@@ -12,7 +12,7 @@ import (
 	"mem-station/internal/memory"
 	"mem-station/internal/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // elevationDocument mirrors the stable `mem-station info -json` payload (see

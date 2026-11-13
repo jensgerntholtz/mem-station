@@ -7,7 +7,7 @@ import (
 	"mem-station/internal/app"
 	"mem-station/internal/style"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // tabNames maps the --tab argument to a tab index, so both "1" and "benchmark"
@@ -58,8 +58,8 @@ func runTUI(deps Deps, args []string) int {
 		return ExitUsage
 	}
 	if *noColor {
-		// Must happen before the first render: lipgloss/termenv read NO_COLOR
-		// when they resolve the color profile.
+		// Must happen before the program starts: Bubble Tea v2 detects the
+		// output color profile with colorprofile.Detect, which reads NO_COLOR.
 		style.UsePlainOutput()
 	}
 
@@ -81,11 +81,12 @@ func runTUI(deps Deps, args []string) int {
 
 // runTUIProgram starts the Bubble Tea program. It is the production RunTUI
 // dependency; tests inject their own so no terminal is required.
+//
+// Bubble Tea v2 has no alt-screen or mouse program options: the model declares
+// them on the view, so this launcher stays option-free. --no-color is honoured
+// through the NO_COLOR environment variable that style.UsePlainOutput sets
+// before the program starts, which colorprofile.Detect reads.
 func runTUIProgram(opts app.Options) error {
-	programOptions := []tea.ProgramOption{tea.WithAltScreen()}
-	if opts.Mouse {
-		programOptions = append(programOptions, tea.WithMouseCellMotion())
-	}
-	_, err := tea.NewProgram(app.New(opts), programOptions...).Run()
+	_, err := tea.NewProgram(app.New(opts)).Run()
 	return err
 }

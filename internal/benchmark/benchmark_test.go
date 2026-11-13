@@ -19,8 +19,8 @@ import (
 	"mem-station/internal/ui"
 	"mem-station/internal/uitest"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 var (
@@ -173,7 +173,7 @@ func TestConfigCycling(t *testing.T) {
 		t.Fatalf("custom duration option did not open the input (index %d, editing %v)", m.durationIndex, m.Editing())
 	}
 	m.input.SetValue("90s")
-	if cmd := m.handleEditKey(tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil {
+	if cmd := m.handleEditKey(uitest.Code(tea.KeyEnter)); cmd != nil {
 		t.Fatal("a valid custom duration produced an error message")
 	}
 	if m.Editing() {
@@ -196,7 +196,7 @@ func TestCustomDurationEscReverts(t *testing.T) {
 	if !m.Editing() {
 		t.Fatal("expected the custom input to be open")
 	}
-	m.handleEditKey(tea.KeyMsg{Type: tea.KeyEsc})
+	m.handleEditKey(uitest.Code(tea.KeyEsc))
 	if m.Editing() {
 		t.Error("esc did not close the custom input")
 	}
@@ -214,7 +214,7 @@ func TestInvalidCustomDurationIsRejected(t *testing.T) {
 		m.cycle(1)
 	}
 	m.input.SetValue("nonsense")
-	cmd := m.handleEditKey(tea.KeyMsg{Type: tea.KeyEnter})
+	cmd := m.handleEditKey(uitest.Code(tea.KeyEnter))
 	if cmd == nil {
 		t.Fatal("invalid duration produced no status message")
 	}
@@ -344,7 +344,7 @@ func TestCancelKeepsConsuming(t *testing.T) {
 	job := startRun(t, m)
 	started(m, job.spec.LogPath)
 
-	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m.handleKey(uitest.Key("x"))
 	if !job.cancelled {
 		t.Fatal("x did not cancel the job")
 	}
@@ -375,7 +375,7 @@ func TestConfigIsLockedWhileRunning(t *testing.T) {
 	m.row = rowBuffer
 	m.cycle(1)
 	m.row = rowDuration
-	m.handleKey(tea.KeyMsg{Type: tea.KeyLeft})
+	m.handleKey(uitest.Code(tea.KeyLeft))
 	if got := m.options(); got != before {
 		t.Errorf("configuration changed while running: %+v -> %+v", before, got)
 	}
@@ -390,18 +390,19 @@ func TestFollowToggle(t *testing.T) {
 	m := newTestModel(t)
 	job := startRun(t, m)
 	started(m, job.spec.LogPath)
-	m.vp.Width, m.vp.Height = 60, 5
+	m.vp.SetWidth(60)
+	m.vp.SetHeight(5)
 	for i := 0; i < 20; i++ {
 		output(m, "line")
 	}
 	if !m.follow || !m.vp.AtBottom() {
 		t.Fatal("follow did not keep the viewport at the bottom")
 	}
-	m.handleKey(tea.KeyMsg{Type: tea.KeyPgUp})
+	m.handleKey(uitest.Code(tea.KeyPgUp))
 	if m.follow {
 		t.Error("pgup left follow enabled")
 	}
-	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	m.handleKey(uitest.Key("f"))
 	if !m.follow || !m.vp.AtBottom() {
 		t.Error("f did not restore follow")
 	}
@@ -433,7 +434,7 @@ func TestExportWritesJSON(t *testing.T) {
 	output(m, "memrate: write rate 18100.00 MB per sec")
 	finished(m, 0, nil, job.spec.LogPath)
 
-	cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	cmd := m.handleKey(uitest.Key("e"))
 	if cmd == nil {
 		t.Fatal("export produced no status message")
 	}
@@ -472,7 +473,7 @@ func TestExportWritesJSON(t *testing.T) {
 // TestNoExportBeforeRun checks e is harmless without history.
 func TestNoExportBeforeRun(t *testing.T) {
 	m := newTestModel(t)
-	cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	cmd := m.handleKey(uitest.Key("e"))
 	if cmd == nil {
 		t.Fatal("expected a status message")
 	}

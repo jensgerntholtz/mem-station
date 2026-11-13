@@ -8,7 +8,7 @@ import (
 
 	"mem-station/internal/runner"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // JobEvent delivers one runner event. The app routes it to the owning tab by

@@ -8,7 +8,7 @@ import (
 	"mem-station/internal/style"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // imcLines renders the IMC register dump: one block per memory channel with

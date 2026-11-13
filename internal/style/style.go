@@ -7,43 +7,45 @@
 package style
 
 import (
+	"image/color"
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // Theme is the semantic token set used by the app shell and shared UI helpers.
 type Theme struct {
-	Bg            lipgloss.AdaptiveColor
-	Fg            lipgloss.AdaptiveColor
-	Muted         lipgloss.AdaptiveColor
-	Accent        lipgloss.AdaptiveColor
-	AccentBg      lipgloss.AdaptiveColor
-	Border        lipgloss.AdaptiveColor
-	BorderFocus   lipgloss.AdaptiveColor
-	Success       lipgloss.AdaptiveColor
-	Warning       lipgloss.AdaptiveColor
-	Danger        lipgloss.AdaptiveColor
-	Info          lipgloss.AdaptiveColor
-	Label         lipgloss.AdaptiveColor
-	Value         lipgloss.AdaptiveColor
-	Dim           lipgloss.AdaptiveColor
-	TabActiveFg   lipgloss.AdaptiveColor
-	TabActiveBg   lipgloss.AdaptiveColor
-	TabInactiveFg lipgloss.AdaptiveColor
-	TabInactiveBg lipgloss.AdaptiveColor
-	ButtonFg      lipgloss.AdaptiveColor
-	ButtonBg      lipgloss.AdaptiveColor
-	ButtonFocusFg lipgloss.AdaptiveColor
-	ButtonFocusBg lipgloss.AdaptiveColor
-	StatusFg      lipgloss.AdaptiveColor
-	ErrorBg       lipgloss.AdaptiveColor
+	Bg            color.Color
+	Fg            color.Color
+	Muted         color.Color
+	Accent        color.Color
+	AccentBg      color.Color
+	Border        color.Color
+	BorderFocus   color.Color
+	Success       color.Color
+	Warning       color.Color
+	Danger        color.Color
+	Info          color.Color
+	Label         color.Color
+	Value         color.Color
+	Dim           color.Color
+	TabActiveFg   color.Color
+	TabActiveBg   color.Color
+	TabInactiveFg color.Color
+	TabInactiveBg color.Color
+	ButtonFg      color.Color
+	ButtonBg      color.Color
+	ButtonFocusFg color.Color
+	ButtonFocusBg color.Color
+	StatusFg      color.Color
+	ErrorBg       color.Color
 }
 
-// Default returns the semantic theme for a dark or light terminal. Colors are
-// AdaptiveColor values with the same color for light and dark backgrounds, so
-// the chosen appearance is stable regardless of terminal auto-detection; the
-// effective rendering still degrades to 256/16/no color through lipgloss.
+// Default returns the semantic theme for a dark or light terminal. Each token
+// is one concrete color: the caller picks the palette (--dark), so nothing here
+// depends on terminal background auto-detection. Bubble Tea v2 downsamples the
+// rendered output to the terminal's color profile, so the same tokens degrade
+// to 256/16/no color without a second code path.
 func Default(dark bool) Theme {
 	if dark {
 		return Theme{
@@ -120,8 +122,9 @@ func ActiveTheme() Theme {
 }
 
 // UsePlainOutput disables color for the rest of the process by setting the
-// standard NO_COLOR/CLICOLOR variables that lipgloss and termenv honour. It must
-// be called before the first render (main does this when --no-color is given).
+// standard NO_COLOR/CLICOLOR variables that colorprofile.Detect honours. It must
+// be called before the program starts so the detected profile is already plain
+// (main does this when --no-color is given).
 func UsePlainOutput() {
 	os.Setenv("NO_COLOR", "1")
 	os.Setenv("CLICOLOR", "0")
@@ -249,6 +252,9 @@ func TabInactive() lipgloss.Style {
 		Padding(0, 2)
 }
 
-func solid(c string) lipgloss.AdaptiveColor {
-	return lipgloss.AdaptiveColor{Light: c, Dark: c}
+// solid turns a 256-color index or hex value into the concrete color used for
+// both light and dark terminals. The --dark flag picks the palette, so a token
+// does not need to be adaptive.
+func solid(c string) color.Color {
+	return lipgloss.Color(c)
 }

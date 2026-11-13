@@ -10,7 +10,7 @@ import (
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Verdict values persisted with a run.

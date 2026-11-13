@@ -7,8 +7,8 @@ import (
 	"mem-station/internal/runner"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 )
 
 // tickInterval is the elapsed-time refresh while a job runs.
@@ -42,10 +42,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m, m.handleKey(msg)
 
-	case tea.MouseMsg:
+	case tea.MouseWheelMsg:
 		return m, m.handleMouse(msg)
 
 	case detectResultMsg:
@@ -95,7 +95,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // handleKey implements global key ownership, then forwards to the active tab.
-func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
+func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// ctrl+c cancels a running job and stays in the app; with nothing running
 	// it quits.
 	if msg.String() == "ctrl+c" {
@@ -181,19 +181,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 // handleMouse maps wheel events to the active tab's page keys. Only wheel input
 // is used, so text selection and clicks keep working in the terminal. Mouse
 // support is off by default (--mouse enables it in the launcher).
-func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
+func (m *Model) handleMouse(msg tea.MouseWheelMsg) tea.Cmd {
 	if !m.opts.Mouse || m.tooSmall() {
 		return nil
 	}
-	ev := tea.MouseEvent(msg)
-	if ev.Action != tea.MouseActionPress {
-		return nil
-	}
 	up := false
-	switch ev.Button {
-	case tea.MouseButtonWheelUp:
+	switch msg.Mouse().Button {
+	case tea.MouseWheelUp:
 		up = true
-	case tea.MouseButtonWheelDown:
+	case tea.MouseWheelDown:
 	default:
 		return nil
 	}
@@ -211,9 +207,9 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	if active.Editing() || active.ModalOpen() {
 		return nil
 	}
-	key := tea.KeyMsg{Type: tea.KeyPgDown}
+	key := tea.KeyPressMsg{Code: tea.KeyPgDown}
 	if up {
-		key = tea.KeyMsg{Type: tea.KeyPgUp}
+		key = tea.KeyPressMsg{Code: tea.KeyPgUp}
 	}
 	return active.Update(key)
 }

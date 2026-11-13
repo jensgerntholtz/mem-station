@@ -3,7 +3,7 @@ package sysinfo
 import (
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/key"
 )
 
 // KeyMap holds the Timings tab bindings. Every binding in this package is

@@ -7,8 +7,8 @@ import (
 	"mem-station/internal/style"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	"charm.land/lipgloss/v2"
 )
 
 const (
@@ -83,8 +83,8 @@ func (m *Model) viewReadOnly(w, h int, title string, vp *viewport.Model, lines [
 	if contentH < 1 {
 		contentH = 1
 	}
-	vp.Width = contentW
-	vp.Height = contentH
+	vp.SetWidth(contentW)
+	vp.SetHeight(contentH)
 	// SetContent keeps the scroll offset, so re-rendering after a resize or a
 	// detection update never jumps the view back to the top.
 	vp.SetContent(strings.Join(lines, "\n"))
@@ -505,7 +505,7 @@ func (m *Model) viewPromptModal(w, h int) string {
 	innerW := modalW - 4
 	clip := func(s string) string { return ui.Truncate(s, innerW, true) }
 
-	m.prompt.Width = max(8, innerW-2)
+	m.prompt.SetWidth(max(8, innerW-2))
 	body := []string{
 		style.Muted().Render(clip(m.promptHint)),
 		"",

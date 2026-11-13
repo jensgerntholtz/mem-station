@@ -9,9 +9,10 @@ import (
 	"mem-station/internal/config"
 	"mem-station/internal/memory"
 	"mem-station/internal/store"
+	"mem-station/internal/uitest"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // newTestModel builds a Timings tab with an isolated state directory.
@@ -242,16 +243,16 @@ func TestEditApplyRoundTrip(t *testing.T) {
 	}
 
 	// Edit the first field: select it, start editing, type a digit, commit.
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(uitest.Code(tea.KeyEnter))
+	m.Update(uitest.Key("2"))
+	m.Update(uitest.Code(tea.KeyEnter))
 
 	if !m.Dirty() {
 		t.Fatal("editing a field must mark the draft dirty")
 	}
 
 	// ctrl+s opens the review; the modal owns the keys until confirmed.
-	if cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS}); cmd != nil {
+	if cmd := m.Update(uitest.Ctrl('s')); cmd != nil {
 		t.Error("opening the apply review must not emit a status message")
 	}
 	if !m.ModalOpen() {
@@ -268,7 +269,7 @@ func TestEditApplyRoundTrip(t *testing.T) {
 		t.Errorf("apply review width = %d, want 78", got)
 	}
 
-	if cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+	if cmd := m.Update(uitest.Code(tea.KeyEnter)); cmd == nil {
 		t.Fatal("confirming the apply must return a status message")
 	}
 	if m.ModalOpen() || m.Dirty() {
@@ -287,7 +288,7 @@ func TestEditApplyRoundTrip(t *testing.T) {
 // TestApplyNotDirty checks that applying an unchanged draft is a no-op.
 func TestApplyNotDirty(t *testing.T) {
 	m := newTestModel(t)
-	cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	cmd := m.Update(uitest.Ctrl('s'))
 	if cmd == nil {
 		t.Fatal("apply without changes must report a status message")
 	}
@@ -301,11 +302,11 @@ func TestApplyCancelKeepsDraft(t *testing.T) {
 	m := newTestModel(t)
 	setDraft(m, FieldVoltage, "1.50")
 
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	m.Update(uitest.Ctrl('s'))
 	if !m.ModalOpen() {
 		t.Fatal("ctrl+s did not open the apply review")
 	}
-	if cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc}); cmd == nil {
+	if cmd := m.Update(uitest.Code(tea.KeyEsc)); cmd == nil {
 		t.Error("cancelling the apply must report a status message")
 	}
 	if m.ModalOpen() {
@@ -324,9 +325,9 @@ func TestCancelEditRestoresValue(t *testing.T) {
 	m := newTestModel(t)
 	before := m.draft[FieldChannels]
 
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
-	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m.Update(uitest.Code(tea.KeyEnter))
+	m.Update(uitest.Key("9"))
+	m.Update(uitest.Code(tea.KeyEsc))
 
 	if got := m.draft[FieldChannels]; got != before {
 		t.Errorf("esc while editing: value = %q, want %q", got, before)
@@ -355,8 +356,8 @@ func TestSnapshotUsesCanonicalKeys(t *testing.T) {
 func TestSnapshotTracksAppliedProfile(t *testing.T) {
 	m := detectedModel(t)
 	setDraft(m, FieldFreq, "2400")
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(uitest.Ctrl('s'))
+	m.Update(uitest.Code(tea.KeyEnter))
 
 	snap := m.Snapshot()
 	if snap.Source != "applied" {
@@ -387,8 +388,8 @@ func TestDetectionFollowsUntouchedDraft(t *testing.T) {
 
 	// An applied profile wins over later detection.
 	setDraft(m, FieldFreq, "2400")
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(uitest.Ctrl('s'))
+	m.Update(uitest.Code(tea.KeyEnter))
 	m.SetDetected(detectedValues(), "ok", nil)
 	if got := m.draft[FieldFreq]; got != "2400" {
 		t.Errorf("applied freq overwritten by detection: %q", got)
@@ -424,7 +425,7 @@ func TestResetDraft(t *testing.T) {
 	if !m.Dirty() {
 		t.Fatal("draft should be dirty after an edit")
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlR})
+	m.Update(uitest.Ctrl('r'))
 	if m.Dirty() {
 		t.Error("ctrl+r must clear the dirty flag")
 	}
@@ -497,16 +498,16 @@ func TestSubViewScrollRetained(t *testing.T) {
 		TimingString:   "16-18-18-38",
 		TimingsBySpeed: []string{"DDR4-3200 16-18-18-38", "DDR4-2133 15-15-15-36"},
 	})
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+	m.Update(uitest.Key("]"))
 	m.View(78, 21)
-	m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	m.Update(uitest.Code(tea.KeyPgDown))
 
-	scrolled := m.spdVP.YOffset
+	scrolled := m.spdVP.YOffset()
 	if scrolled == 0 {
 		t.Fatal("pgdown did not scroll the SPD view")
 	}
 	m.View(78, 21)
-	if got := m.spdVP.YOffset; got != scrolled {
+	if got := m.spdVP.YOffset(); got != scrolled {
 		t.Errorf("scroll offset changed on re-render: %d, want %d", got, scrolled)
 	}
 }
@@ -515,7 +516,7 @@ func TestSubViewScrollRetained(t *testing.T) {
 
 // promptModel runs a profile key and returns the tab with its prompt modal
 // open, typing value into the prompt the way a user would.
-func promptModel(t *testing.T, m *Model, key tea.KeyMsg, value string) {
+func promptModel(t *testing.T, m *Model, key tea.KeyPressMsg, value string) {
 	t.Helper()
 	m.Update(key)
 	if !m.ModalOpen() || !m.modal.prompt() {
@@ -523,7 +524,7 @@ func promptModel(t *testing.T, m *Model, key tea.KeyMsg, value string) {
 	}
 	m.prompt.SetValue("") // prompts may be prefilled; the test types its own value
 	for _, r := range value {
-		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m.Update(uitest.Key(string(r)))
 	}
 }
 
@@ -532,8 +533,8 @@ func promptModel(t *testing.T, m *Model, key tea.KeyMsg, value string) {
 func TestSaveNamedProfileFromDraft(t *testing.T) {
 	m := detectedModel(t)
 	setDraft(m, FieldChannels, "4")
-	promptModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlP}, "daily")
-	if cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+	promptModel(t, m, uitest.Ctrl('p'), "daily")
+	if cmd := m.Update(uitest.Code(tea.KeyEnter)); cmd == nil {
 		t.Fatal("confirming the save produced no status message")
 	}
 	if m.ModalOpen() {
@@ -561,8 +562,8 @@ func TestLoadNamedProfileIntoDraft(t *testing.T) {
 		t.Fatalf("SaveNamedProfile: %v", err)
 	}
 
-	promptModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlL}, "undervolt")
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	promptModel(t, m, uitest.Ctrl('l'), "undervolt")
+	m.Update(uitest.Code(tea.KeyEnter))
 
 	if got := m.draft[FieldFreq]; got != "2933" {
 		t.Errorf("draft frequency = %q, want 2933", got)
@@ -585,8 +586,8 @@ func TestImportProfileValidation(t *testing.T) {
 	if err := os.WriteFile(bad, []byte(`{"name":"bad","values":{"not_a_key":"1"}}`), 0o600); err != nil {
 		t.Fatalf("write bad profile: %v", err)
 	}
-	promptModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlO}, bad)
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	promptModel(t, m, uitest.Ctrl('o'), bad)
+	m.Update(uitest.Code(tea.KeyEnter))
 	if !m.ModalOpen() {
 		t.Fatal("an invalid import closed the modal")
 	}
@@ -602,7 +603,7 @@ func TestImportProfileValidation(t *testing.T) {
 		t.Fatalf("write good profile: %v", err)
 	}
 	m.prompt.SetValue(good)
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(uitest.Code(tea.KeyEnter))
 	if m.ModalOpen() {
 		t.Error("a valid import did not close the modal")
 	}
@@ -620,8 +621,8 @@ func TestExportProfileToPath(t *testing.T) {
 	m := detectedModel(t)
 	path := filepath.Join(t.TempDir(), "nested", "profile.json")
 
-	promptModel(t, m, tea.KeyMsg{Type: tea.KeyCtrlE}, path)
-	if cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+	promptModel(t, m, uitest.Ctrl('e'), path)
+	if cmd := m.Update(uitest.Code(tea.KeyEnter)); cmd == nil {
 		t.Fatal("exporting produced no status message")
 	}
 	if m.ModalOpen() {
@@ -651,8 +652,8 @@ func TestExportProfileToPath(t *testing.T) {
 // instead of silently closing.
 func TestProfilePromptEmptyValue(t *testing.T) {
 	m := detectedModel(t)
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(uitest.Ctrl('p'))
+	m.Update(uitest.Code(tea.KeyEnter))
 	if !m.ModalOpen() {
 		t.Fatal("an empty prompt closed the modal")
 	}
@@ -660,7 +661,7 @@ func TestProfilePromptEmptyValue(t *testing.T) {
 		t.Errorf("prompt error = %q, want a required-value message", m.promptErr)
 	}
 	// esc always closes and leaves the draft alone.
-	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m.Update(uitest.Code(tea.KeyEsc))
 	if m.ModalOpen() {
 		t.Error("esc did not close the prompt")
 	}
@@ -675,25 +676,25 @@ func TestArrowKeysAdjustNumericFields(t *testing.T) {
 
 	m.focus = m.fieldIndex(FieldCL)
 	m.draft[FieldCL] = "16"
-	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m.Update(uitest.Code(tea.KeyRight))
 	if got := m.draft[FieldCL]; got != "17" {
 		t.Errorf("tCL after → = %q, want 17", got)
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m.Update(uitest.Code(tea.KeyLeft))
 	if got := m.draft[FieldCL]; got != "16" {
 		t.Errorf("tCL after ← = %q, want 16", got)
 	}
 
 	m.focus = m.fieldIndex(FieldFreq)
 	m.draft[FieldFreq] = "3200"
-	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m.Update(uitest.Code(tea.KeyRight))
 	if got := m.draft[FieldFreq]; got != "3300" {
 		t.Errorf("freq after → = %q, want the 100 MT/s step", got)
 	}
 
 	m.focus = m.fieldIndex(FieldVoltage)
 	m.draft[FieldVoltage] = "1.35"
-	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m.Update(uitest.Code(tea.KeyRight))
 	if got := m.draft[FieldVoltage]; got != "1.36" {
 		t.Errorf("voltage after → = %q, want 1.36", got)
 	}
@@ -706,19 +707,19 @@ func TestArrowKeysCyclePresetValues(t *testing.T) {
 	m.focus = m.fieldIndex(FieldCR)
 	m.draft[FieldCR] = "1T"
 
-	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m.Update(uitest.Code(tea.KeyRight))
 	if got := m.draft[FieldCR]; got != "2T" {
 		t.Errorf("command rate after → = %q, want 2T", got)
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m.Update(uitest.Code(tea.KeyRight))
 	if got := m.draft[FieldCR]; got != "1T" {
 		t.Errorf("command rate did not wrap: %q", got)
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m.Update(uitest.Code(tea.KeyLeft))
 	if got := m.draft[FieldCR]; got != "2T" {
 		t.Errorf("command rate after ← = %q, want 2T", got)
 	}
-	if cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
+	if cmd := m.Update(uitest.Code(tea.KeyEnter)); cmd == nil {
 		t.Error("Enter on a preset-only field should explain the ←/→ keys")
 	}
 	if m.editing {
@@ -737,12 +738,12 @@ func TestArrowKeysUseSPDFrequencies(t *testing.T) {
 	m.focus = m.fieldIndex(FieldFreq)
 	m.draft[FieldFreq] = "3200"
 
-	m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m.Update(uitest.Code(tea.KeyRight))
 	if got := m.draft[FieldFreq]; got != "3600" {
 		t.Errorf("freq after → = %q, want the next SPD speed 3600", got)
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
-	m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m.Update(uitest.Code(tea.KeyLeft))
+	m.Update(uitest.Code(tea.KeyLeft))
 	if got := m.draft[FieldFreq]; got != "2133" {
 		t.Errorf("freq after ← ← = %q, want the previous SPD speed 2133", got)
 	}
@@ -757,7 +758,7 @@ func TestNumericInputMasking(t *testing.T) {
 	m := newTestModel(t)
 	m.focus = m.fieldIndex(FieldCL)
 	m.startEditing()
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1a2.")})
+	m.Update(uitest.Key("1a2."))
 	if got := m.input.Value(); got != "12" {
 		t.Errorf("integer input = %q, want digits only", got)
 	}
@@ -765,11 +766,11 @@ func TestNumericInputMasking(t *testing.T) {
 
 	m.focus = m.fieldIndex(FieldVoltage)
 	m.startEditing()
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1.3x5")})
+	m.Update(uitest.Key("1.3x5"))
 	if got := m.input.Value(); got != "1.35" {
 		t.Errorf("float input = %q, want one decimal point", got)
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(".")})
+	m.Update(uitest.Key("."))
 	if got := m.input.Value(); got != "1.35" {
 		t.Errorf("float input accepted a second decimal point: %q", got)
 	}
@@ -780,11 +781,11 @@ func TestNumericInputMasking(t *testing.T) {
 func TestArrowNavigationStillMovesFocus(t *testing.T) {
 	m := newTestModel(t)
 	m.focus = 0
-	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(uitest.Code(tea.KeyDown))
 	if m.focus != 1 {
 		t.Errorf("↓ moved focus to %d, want 1", m.focus)
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m.Update(uitest.Code(tea.KeyUp))
 	if m.focus != 0 {
 		t.Errorf("↑ moved focus to %d, want 0", m.focus)
 	}

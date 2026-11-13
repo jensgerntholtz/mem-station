@@ -7,12 +7,29 @@ import (
 	"mem-station/internal/style"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // View renders the whole shell: header, tab bar, body, footer. The result is
 // exactly the terminal size minus nothing - the body absorbs all slack.
-func (m *Model) View() string {
+//
+// Bubble Tea v2 takes terminal modes from the view instead of program options,
+// so the alternate screen, the window title, and mouse capture are declared
+// here rather than at Program construction.
+func (m *Model) View() tea.View {
+	v := tea.NewView(m.render())
+	v.AltScreen = true
+	v.WindowTitle = "MemStation"
+	if m.opts.Mouse {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
+	return v
+}
+
+// render builds the view content. Tests compare it against golden files, and
+// View wraps it with the terminal modes above.
+func (m *Model) render() string {
 	if m.tooSmall() {
 		return m.tooSmallView()
 	}

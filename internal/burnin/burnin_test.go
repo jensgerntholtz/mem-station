@@ -17,8 +17,7 @@ import (
 	"mem-station/internal/ui"
 	"mem-station/internal/uitest"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 var (
@@ -301,7 +300,7 @@ func TestUserCancelIsDistinctFromFailure(t *testing.T) {
 	started(m, job.spec.LogPath)
 	output(m, "stress-ng: info: running")
 
-	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	m.handleKey(uitest.Key("x"))
 	if !job.cancelled {
 		t.Fatal("x did not cancel the job")
 	}
@@ -335,7 +334,7 @@ func TestErrorsOnlyFilter(t *testing.T) {
 	output(m, "stress-ng: info: running")
 	output(m, "stress-ng: error: two")
 
-	m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("e")})
+	m.handleKey(uitest.Key("e"))
 	if !m.errorsOnly {
 		t.Fatal("e did not switch to the errors-only filter")
 	}
@@ -356,7 +355,7 @@ func TestExportWritesJSON(t *testing.T) {
 	output(m, "stress-ng: info: successful run completed in 300.00 secs (0 errors)")
 	finished(m, 0, nil, job.spec.LogPath)
 
-	cmd := m.handleKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	cmd := m.handleKey(uitest.Key("s"))
 	if cmd == nil {
 		t.Fatal("export produced no status message")
 	}

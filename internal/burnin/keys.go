@@ -3,7 +3,7 @@ package burnin
 import (
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/key"
 )
 
 // KeyMap holds the Burn-in tab bindings.

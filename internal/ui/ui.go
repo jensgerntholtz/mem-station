@@ -11,8 +11,8 @@ import (
 
 	"mem-station/internal/style"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -165,8 +165,8 @@ func Panel(title string, width, height int, focused bool, body string) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
 		Padding(0, 1).
-		Width(width - 2).
-		Height(height - 2)
+		Width(width).
+		Height(height)
 	return border.Render(ClipLines(content, height-2))
 }
 
@@ -286,8 +286,8 @@ func HelpOverlayAt(width, height int, sections []HelpSection, offset int) string
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(th.BorderFocus).
 		Padding(0, 1).
-		Width(width - 2).
-		Height(height - 2)
+		Width(width).
+		Height(height)
 	return border.Render(ClipLines(body+"\n"+footer, height-2))
 }
 
@@ -303,7 +303,7 @@ func Modal(title string, body []string, width int) string {
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(th.BorderFocus).
 		Padding(0, 1).
-		Width(width - 2)
+		Width(width)
 	return border.Render(strings.Join(lines, "\n"))
 }
 

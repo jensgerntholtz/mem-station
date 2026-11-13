@@ -12,8 +12,8 @@ import (
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	tea "charm.land/bubbletea/v2"
 )
 
 // maxOutputLines bounds the retained live output.
@@ -22,7 +22,7 @@ const maxOutputLines = 2000
 // Update handles messages for the Burn-in tab.
 func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 	case msgs.JobEvent:
 		if !m.Wants(msg.Ev.Kind) {
@@ -33,7 +33,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
+func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	if m.editing {
 		return m.handleEditKey(msg)
 	}
@@ -81,7 +81,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 // handleEditKey drives the custom-duration input.
-func (m *Model) handleEditKey(msg tea.KeyMsg) tea.Cmd {
+func (m *Model) handleEditKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "enter", "tab", "shift+tab":
 		if err := m.commitEdit(); err != nil {
@@ -343,9 +343,9 @@ func (m *Model) resizeViewport(width, height int) {
 	if height < 1 {
 		height = 1
 	}
-	if m.vp.Width != width || m.vp.Height != height {
-		m.vp.Width = width
-		m.vp.Height = height
+	if m.vp.Width() != width || m.vp.Height() != height {
+		m.vp.SetWidth(width)
+		m.vp.SetHeight(height)
 		m.syncViewport()
 	}
 }

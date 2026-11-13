@@ -11,9 +11,10 @@ import (
 	"mem-station/internal/msgs"
 	"mem-station/internal/runner"
 	"mem-station/internal/ui"
+	"mem-station/internal/uitest"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // testModel builds a root model with detection stubbed out and an isolated
@@ -50,7 +51,7 @@ func testModel(t *testing.T) *Model {
 // sizeModel applies a window size and returns the rendered view.
 func sizeModel(m *Model, w, h int) string {
 	m.Update(tea.WindowSizeMsg{Width: w, Height: h})
-	return m.View()
+	return m.View().Content
 }
 
 // TestViewIsExactlyTerminalSize guards the fixed-footer contract: the shell
@@ -94,8 +95,8 @@ func TestTooSmallScreen(t *testing.T) {
 func TestHelpOverlayFillsBody(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
-	out := m.View()
+	m.Update(uitest.Key("?"))
+	out := m.View().Content
 	if !strings.Contains(out, "Global") {
 		t.Fatalf("help overlay missing global section:\n%s", out)
 	}
@@ -152,7 +153,7 @@ func TestAllTabsAreExactSize(t *testing.T) {
 		m := testModel(t)
 		m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 		m.switchTab(tab)
-		out := m.View()
+		out := m.View().Content
 		if got := lipgloss.Height(out); got != 30 {
 			t.Errorf("tab %d: height = %d, want 30", tab, got)
 		}
@@ -167,8 +168,8 @@ func TestTimingsSubViewsAreExactSize(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	for i := 0; i < 2; i++ {
-		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
-		out := m.View()
+		m.Update(uitest.Key("]"))
+		out := m.View().Content
 		if got := lipgloss.Height(out); got != 30 {
 			t.Errorf("sub-view %d: height = %d, want 30", i+1, got)
 		}
@@ -184,22 +185,22 @@ func TestTimingsSubViewsAreExactSize(t *testing.T) {
 func TestEditingOwnsLetterKeys(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // start editing Channels
+	m.Update(uitest.Code(tea.KeyEnter)) // start editing Channels
 
-	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); isQuit(cmd) {
+	if _, cmd := m.Update(uitest.Key("q")); isQuit(cmd) {
 		t.Errorf("typing q while editing quit the program")
 	}
 	if m.active != 0 {
 		t.Errorf("typing q while editing switched tab to %d", m.active)
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	m.Update(uitest.Key("2"))
 	if m.active != 0 {
 		t.Errorf("digit while editing switched tab to %d", m.active)
 	}
-	if out := m.View(); !strings.Contains(out, "22") {
+	if out := m.View().Content; !strings.Contains(out, "22") {
 		t.Errorf("typed digit missing from the draft field:\n%s", out)
 	}
-	if strings.Contains(m.View(), "2q") {
+	if strings.Contains(m.View().Content, "2q") {
 		t.Error("numeric field accepted a letter")
 	}
 }
@@ -210,7 +211,7 @@ func TestFooterKeepsStatus(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m.setStatus("Burn-in failed: 12 error lines", ui.LevelError)
-	out := m.View()
+	out := m.View().Content
 
 	lines := strings.Split(out, "\n")
 	footer := ""
@@ -242,19 +243,19 @@ func TestApplyReviewInShell(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 
 	// Edit the first field (Channels) and commit it.
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(uitest.Code(tea.KeyEnter))
+	m.Update(uitest.Key("2"))
+	m.Update(uitest.Code(tea.KeyEnter))
 	if !m.sys.Dirty() {
 		t.Fatal("editing a field did not mark the draft dirty")
 	}
-	if out := m.View(); !strings.Contains(out, "unsaved changes") {
+	if out := m.View().Content; !strings.Contains(out, "unsaved changes") {
 		t.Errorf("header does not show the dirty marker:\n%s", out)
 	}
 
 	// ctrl+s opens the review modal; the shell keeps its exact size.
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
-	out := m.View()
+	m.Update(uitest.Ctrl('s'))
+	out := m.View().Content
 	for _, want := range []string{"Apply profile", "Profile only - not written to hardware"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("apply review missing %q:\n%s", want, out)
@@ -268,11 +269,11 @@ func TestApplyReviewInShell(t *testing.T) {
 	}
 
 	// Global keys are gated while the modal owns the input.
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	m.Update(uitest.Key("?"))
 	if m.helpOpen {
 		t.Error("? opened help while the apply review was open")
 	}
-	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); isQuit(cmd) {
+	if _, cmd := m.Update(uitest.Key("q")); isQuit(cmd) {
 		t.Error("q quit the program from inside the apply review")
 	}
 	if m.sys.ModalOpen() {
@@ -280,12 +281,12 @@ func TestApplyReviewInShell(t *testing.T) {
 	}
 
 	// Reopen and confirm.
-	m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(uitest.Ctrl('s'))
+	m.Update(uitest.Code(tea.KeyEnter))
 	if m.sys.Dirty() {
 		t.Error("confirming the apply left the draft dirty")
 	}
-	if out := m.View(); strings.Contains(out, "unsaved changes") {
+	if out := m.View().Content; strings.Contains(out, "unsaved changes") {
 		t.Errorf("dirty marker survived the apply:\n%s", out)
 	}
 
@@ -303,13 +304,13 @@ func TestQuitGating(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 
-	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")}); isQuit(cmd) {
+	if _, cmd := m.Update(uitest.Key("?")); isQuit(cmd) {
 		t.Fatal("help toggle quit the program")
 	}
-	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); isQuit(cmd) {
+	if _, cmd := m.Update(uitest.Key("q")); isQuit(cmd) {
 		t.Error("q with help open should close help, not quit")
 	}
-	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); !isQuit(cmd) {
+	if _, cmd := m.Update(uitest.Key("q")); !isQuit(cmd) {
 		t.Error("q with no overlay should quit")
 	}
 }
@@ -338,13 +339,13 @@ func TestJobEventsRouteToInactiveTab(t *testing.T) {
 	if m.active != 0 {
 		t.Errorf("active tab changed to %d", m.active)
 	}
-	if out := m.View(); !strings.Contains(out, "burn-in running") {
+	if out := m.View().Content; !strings.Contains(out, "burn-in running") {
 		t.Errorf("header does not mark the running tab:\n%s", out)
 	}
 
 	// Switching to the tab shows the live run instead of a fresh idle state.
 	m.switchTab(2)
-	if out := m.View(); !strings.Contains(out, "running") {
+	if out := m.View().Content; !strings.Contains(out, "running") {
 		t.Errorf("burn-in tab lost the running state:\n%s", out)
 	}
 }
@@ -356,7 +357,7 @@ func TestCtrlCCancelsRunningJob(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m.Update(jobEvent(runner.KindBenchmark, runner.EventStarted))
 
-	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC}); isQuit(cmd) {
+	if _, cmd := m.Update(uitest.Ctrl('c')); isQuit(cmd) {
 		t.Error("ctrl+c quit the app while a job was running")
 	}
 	if !strings.Contains(m.status, "Cancelling") {
@@ -365,7 +366,7 @@ func TestCtrlCCancelsRunningJob(t *testing.T) {
 
 	idle := testModel(t)
 	idle.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	if _, cmd := idle.Update(tea.KeyMsg{Type: tea.KeyCtrlC}); !isQuit(cmd) {
+	if _, cmd := idle.Update(uitest.Ctrl('c')); !isQuit(cmd) {
 		t.Error("ctrl+c did not quit with no job running")
 	}
 }
@@ -388,7 +389,7 @@ func TestErrorStatusIsSticky(t *testing.T) {
 	if m.level == ui.LevelError {
 		t.Errorf("a new run did not clear the error banner: %q", m.status)
 	}
-	if out := m.View(); !strings.Contains(out, "Benchmark") {
+	if out := m.View().Content; !strings.Contains(out, "Benchmark") {
 		t.Errorf("view broke after the status reset:\n%s", out)
 	}
 }
@@ -403,7 +404,7 @@ func TestRunTabsAreExactSizeWhileRunning(t *testing.T) {
 		m.Update(jobEvent(runner.KindBurnIn, runner.EventStarted))
 		for _, tab := range []int{1, 2} {
 			m.switchTab(tab)
-			out := m.View()
+			out := m.View().Content
 			if got := lipgloss.Height(out); got != size.h {
 				t.Errorf("%dx%d tab %d: height = %d, want %d", size.w, size.h, tab, got, size.h)
 			}

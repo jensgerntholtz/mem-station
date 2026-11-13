@@ -19,9 +19,9 @@ import (
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 // subView selects which read-only or editable panel the tab shows.
@@ -135,12 +135,12 @@ func New() *Model {
 	in := textinput.New()
 	in.Prompt = "" // the label column already shows which field is focused
 	in.CharLimit = 8
-	in.Width = draftColW - 1
+	in.SetWidth(draftColW - 1)
 
 	prompt := textinput.New()
 	prompt.Prompt = "> "
 	prompt.CharLimit = 512
-	prompt.Width = 60
+	prompt.SetWidth(60)
 
 	return &Model{
 		fields:     Fields(),
@@ -151,8 +151,8 @@ func New() *Model {
 		prompt:     prompt,
 		lockRatios: true,
 		imcNote:    "Raw MCHBAR registers are opt-in; press I to read them.",
-		spdVP:      viewport.New(60, 10),
-		imcVP:      viewport.New(60, 10),
+		spdVP:      viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
+		imcVP:      viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
 		keys:       DefaultKeyMap(),
 	}
 }

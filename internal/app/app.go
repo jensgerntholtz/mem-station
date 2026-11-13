@@ -15,7 +15,7 @@ import (
 	"mem-station/internal/sysinfo"
 	"mem-station/internal/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Version is the default version string shown in the header.

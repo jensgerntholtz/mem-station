@@ -13,9 +13,9 @@ import (
 	"mem-station/internal/runner"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 // configRow identifies one row of the run configuration.
@@ -94,7 +94,7 @@ func New(jobPath string, snapshot config.Snapshot) *Model {
 	in := textinput.New()
 	in.Prompt = ""
 	in.CharLimit = 8
-	in.Width = 8
+	in.SetWidth(8)
 
 	presets, warn := Presets(jobPath)
 
@@ -110,7 +110,7 @@ func New(jobPath string, snapshot config.Snapshot) *Model {
 		stopOnError:   true,
 		input:         in,
 		follow:        true,
-		vp:            viewport.New(60, 10),
+		vp:            viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
 		keys:          DefaultKeyMap(),
 	}
 }
