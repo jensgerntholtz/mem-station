@@ -122,13 +122,27 @@ All 57 repos returned by `GET /orgs/charmbracelet/repos` (Nov 2026), plus the
 Effort is a single-developer estimate including tests, on top of the existing
 `gofmt`/`vet`/`build`/`test` gate.
 
-### P0 — Baseline and guardrails (0.5 day)
+### P0 — Baseline and guardrails (0.5 day) — **done**
 
-1. `git tag baseline-pre-charm` on `main`; confirm `go test ./... -count=1` green.
-2. Record current goldens: `go test ./... -run TestGolden -update` then `git diff --stat` must be empty.
-3. Add a `make`/`Taskfile` (or extend CI) so the v1→v2 migration has one command to run.
+Landed in `2fba2ae`; the pre-P0 commit is tagged `baseline-pre-charm`.
 
-Done when: clean tree, green tests, a diffable golden baseline.
+1. ~~Tag the pre-migration commit and confirm the suite is green.~~ Done:
+   `baseline-pre-charm` points at `23baa99` (before the task runner).
+2. ~~Record current goldens.~~ Done: `make goldens` is idempotent — it rewrites
+   every golden with no resulting diff, so any later golden change is a real
+   change.
+3. ~~Add a task runner so the migration has one command.~~ Done: `make check`
+   (gofmt, vet, build, test), plus `race`, `integration`, `goldens`,
+   `goldens-check`, `bin`, `tidy`, `clean`, `help`. CI now calls the same
+   targets and adds the race suite.
+4. Finding: the documented `go test ./... -run TestGolden -update` never worked —
+   `-update` is only registered by test binaries that link `internal/uitest`, so
+   `./internal/sysinfo` and others abort on an unknown flag. `uitest.Update()`
+   now also honours `MEM_STATION_UPDATE_GOLDEN=1`, which is what `make goldens`
+   uses; the flag still works when scoped to a package that links the harness.
+
+Done criteria met: clean tree, green `make check`/`make race`/`make
+integration`, diffable golden baseline.
 
 ### P1 — Bubble Tea v2 / Lip Gloss v2 / Bubbles v2 (2-3 days)
 
@@ -276,9 +290,9 @@ full `ctrl+p`→`ctrl+l`→`ctrl+e` profile round-trip.
 
 ---
 
-## 5. Recommended first slice
+## 5. Recommended next slice
 
-Do **P0 + P1 only**, as one branch (`charm-v2`), no new features. That
+P0 is done. Do **P1 only**, as one branch (`charm-v2`), no new features. That
 establishes the migration pattern, burns down the golden churn, and makes every
 later phase a small addition rather than a rewrite. If that lands cleanly, P2
 (CLI) is the highest visible-value follow-up.
