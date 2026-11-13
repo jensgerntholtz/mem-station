@@ -9,8 +9,8 @@ import (
 	"syscall"
 )
 
-// ReadMCHBARTimings reads tertiary timing values from the MCHBAR registers for
-// each memory channel. Requires root and iomem=relaxed.
+// ReadMCHBARTimings reads per-channel IMC timing registers from /dev/mem.
+// It requires root (or iomem=relaxed) and returns a useful error otherwise.
 func ReadMCHBARTimings() ([]IMCTimings, error) {
 	mchbar, err := getMCHBARBase()
 	if err != nil {
@@ -87,7 +87,7 @@ func ReadMCHBARTimings() ([]IMCTimings, error) {
 			TRFC:  extractBits(rftp, 16, 9),
 		}
 
-		_ = syscall.Munmap(data)
+		syscall.Munmap(data)
 		results = append(results, t)
 	}
 
@@ -113,7 +113,7 @@ func getMCHBARBase() (uint64, error) {
 	if mchbar&1 == 0 {
 		return 0, fmt.Errorf("MCHBAR not enabled")
 	}
-	// Clear low 14 bits (enable + reserved), keep base address
+	// Clear low 14 bits (enable + reserved), keep base address.
 	mchbar &= ^uint64(0x3FFF)
 	if mchbar == 0 {
 		return 0, fmt.Errorf("MCHBAR base is zero")

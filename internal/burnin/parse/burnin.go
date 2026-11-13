@@ -1,7 +1,7 @@
-// Package burnin parses stress-ng burn-in output into a Results summary.
+// Package parse parses stress-ng burn-in output into a Results summary.
 //
 // It is a leaf package: it does not execute commands or write to stdout/stderr.
-package burnin
+package parse
 
 import (
 	"regexp"
@@ -40,9 +40,16 @@ func ParseBurnInOutput(output string, exitCode int, err error) *Results {
 	return r
 }
 
+// noErrorRe matches phrasing that reports the absence of errors, which must not
+// be counted as a failure ("0 errors", "no errors detected").
+var noErrorRe = regexp.MustCompile(`(?i)\b(0|no|zero)\b[^\n]{0,12}\berrors?\b`)
+
 func countErrorLines(output string) int {
 	count := 0
 	for _, line := range strings.Split(output, "\n") {
+		if noErrorRe.MatchString(line) {
+			continue
+		}
 		if errorLineRe.MatchString(line) {
 			count++
 		}

@@ -1,11 +1,10 @@
-// Package store owns persistence under the XDG state directory: profiles,
-// run history, log paths, and burn-in job materialization.
-//
-// The state dir resolves in order: MEM_STATION_STATE_DIR, then
-// $XDG_STATE_HOME/mem-station, then ~/.local/state/mem-station.
+// Package store manages the XDG state directory, profiles, run history, and
+// materialized job files.
 package store
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,143 +19,7 @@ import (
 	"mem-station/internal/runner"
 )
 
-// Dir resolves (and creates, 0700) the state directory.
-func Dir() (string, error) {
-	if v := os.Getenv("MEM_STATION_STATE_DIR"); v != "" {
-		return ensureDir(v)
-	}
-	if v := os.Getenv("XDG_STATE_HOME"); v != "" {
-		return ensureDir(filepath.Join(v, "mem-station"))
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return ensureDir(filepath.Join(home, ".local", "state", "mem-station"))
-}
-
-func ensureDir(p string) (string, error) {
-	if err := os.MkdirAll(p, 0700); err != nil {
-		return "", err
-	}
-	return p, nil
-}
-
-// --- Profiles ---
-
-// LoadActiveProfile returns the active profile and whether it exists.
-func LoadActiveProfile() (config.Profile, bool, error) {
-	p, err := activeProfilePath()
-	if err != nil {
-		return config.Profile{}, false, err
-	}
-	return readProfile(p)
-}
-
-// SaveActiveProfile atomically writes the active profile.
-func SaveActiveProfile(prof config.Profile) error {
-	p, err := activeProfilePath()
-	if err != nil {
-		return err
-	}
-	return writeProfile(p, prof)
-}
-
-// LoadNamedProfile returns a named profile and whether it exists.
-func LoadNamedProfile(name string) (config.Profile, bool, error) {
-	if name == "" {
-		return config.Profile{}, false, fmt.Errorf("store: empty profile name")
-	}
-	p, err := namedProfilePath(name)
-	if err != nil {
-		return config.Profile{}, false, err
-	}
-	return readProfile(p)
-}
-
-// SaveNamedProfile atomically writes a named profile.
-func SaveNamedProfile(prof config.Profile) error {
-	if prof.Name == "" {
-		return fmt.Errorf("store: empty profile name")
-	}
-	p, err := namedProfilePath(prof.Name)
-	if err != nil {
-		return err
-	}
-	return writeProfile(p, prof)
-}
-
-// ListProfiles returns the names of saved profiles (excluding "active").
-func ListProfiles() ([]string, error) {
-	d, err := Dir()
-	if err != nil {
-		return nil, err
-	}
-	dir := filepath.Join(d, "profiles")
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		name := strings.TrimSuffix(e.Name(), ".json")
-		if name == "active" {
-			continue
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names, nil
-}
-
-func activeProfilePath() (string, error) {
-	d, err := Dir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(d, "profiles", "active.json"), nil
-}
-
-func namedProfilePath(name string) (string, error) {
-	d, err := Dir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(d, "profiles", name+".json"), nil
-}
-
-func readProfile(path string) (config.Profile, bool, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return config.Profile{}, false, nil
-	}
-	if err != nil {
-		return config.Profile{}, false, err
-	}
-	var prof config.Profile
-	if err := json.Unmarshal(data, &prof); err != nil {
-		return config.Profile{}, false, err
-	}
-	return prof, true, nil
-}
-
-func writeProfile(path string, prof config.Profile) error {
-	data, err := json.MarshalIndent(prof, "", "  ")
-	if err != nil {
-		return err
-	}
-	return atomicWrite(path, data)
-}
-
-// --- History ---
-
-// Record is one append-only history entry (JSONL).
+// Record is a single persisted run history entry.
 type Record struct {
 	ID         string          `json:"id"`
 	Kind       runner.Kind     `json:"kind"`
@@ -165,147 +28,294 @@ type Record struct {
 	ExitCode   int             `json:"exit_code"`
 	Error      string          `json:"error,omitempty"`
 	LogPath    string          `json:"log_path,omitempty"`
-	Config     config.Snapshot `json:"config,omitempty"`
+	Config     config.Snapshot `json:"config"`
 	Payload    json.RawMessage `json:"payload,omitempty"`
 }
 
-// AppendHistory appends one record to the JSONL history file (0600).
-func AppendHistory(r Record) error {
-	d, err := Dir()
+var jobTimeoutRe = regexp.MustCompile(`(?m)^[ \t]*timeout[ \t]+.*$`)
+
+// Dir resolves and creates the state directory:
+// MEM_STATION_STATE_DIR, else $XDG_STATE_HOME/mem-station, else
+// ~/.local/state/mem-station.
+func Dir() (string, error) {
+	if d := os.Getenv("MEM_STATION_STATE_DIR"); d != "" {
+		return ensureDir(d)
+	}
+	if d := os.Getenv("XDG_STATE_HOME"); d != "" {
+		return ensureDir(filepath.Join(d, "mem-station"))
+	}
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return err
+		return "", err
 	}
-	if r.ID == "" {
-		r.ID = fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	data, err := json.Marshal(r)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(d, "history.jsonl")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if _, err := f.Write(append(data, '\n')); err != nil {
-		return err
-	}
-	return f.Sync()
+	return ensureDir(filepath.Join(home, ".local", "state", "mem-station"))
 }
 
-// RecentHistory returns the most recent n records of the given kind (newest
-// first). It tolerates corrupt trailing lines.
-func RecentHistory(kind runner.Kind, n int) ([]Record, error) {
-	d, err := Dir()
+// LogPath returns the path where a run of the given kind should be logged.
+// The directory is not created here; the runner creates it when writing.
+func LogPath(kind runner.Kind, t time.Time) string {
+	dir, err := Dir()
+	if err != nil {
+		dir = filepath.Join(os.TempDir(), "mem-station")
+	}
+	name := fmt.Sprintf("%s-%s.log", kind, t.UTC().Format("20060102T150405.000Z"))
+	return filepath.Join(dir, "logs", name)
+}
+
+// LoadActiveProfile loads the active profile. The bool is false when no
+// profile exists yet.
+func LoadActiveProfile() (config.Profile, bool, error) {
+	dir, err := Dir()
+	if err != nil {
+		return config.Profile{}, false, err
+	}
+	return loadProfile(filepath.Join(dir, "profiles", "active.json"))
+}
+
+// SaveActiveProfile atomically persists the active profile.
+func SaveActiveProfile(p config.Profile) error {
+	p.UpdatedAt = time.Now().UTC()
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return err
+	}
+	dir, err := Dir()
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(filepath.Join(dir, "profiles", "active.json"), data, 0600)
+}
+
+// LoadNamedProfile loads a named profile by its display name.
+func LoadNamedProfile(name string) (config.Profile, bool, error) {
+	if strings.TrimSpace(name) == "" {
+		return config.Profile{}, false, fmt.Errorf("profile name is required")
+	}
+	dir, err := Dir()
+	if err != nil {
+		return config.Profile{}, false, err
+	}
+	return loadProfile(filepath.Join(dir, "profiles", profileFileName(name)))
+}
+
+// SaveNamedProfile atomically persists a named profile.
+func SaveNamedProfile(p config.Profile) error {
+	if strings.TrimSpace(p.Name) == "" {
+		return fmt.Errorf("profile name is required")
+	}
+	p.UpdatedAt = time.Now().UTC()
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return err
+	}
+	dir, err := Dir()
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(filepath.Join(dir, "profiles", profileFileName(p.Name)), data, 0600)
+}
+
+// ListProfiles returns sorted profile names, excluding the active profile.
+func ListProfiles() ([]string, error) {
+	dir, err := Dir()
 	if err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(filepath.Join(d, "history.jsonl"))
+	entries, err := os.ReadDir(filepath.Join(dir, "profiles"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	var all []Record
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() || e.Name() == "active.json" || !strings.HasSuffix(e.Name(), ".json") {
 			continue
 		}
-		var rec Record
-		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+		names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// AppendHistory appends a record to the JSONL history file.
+func AppendHistory(r Record) error {
+	if r.ID == "" {
+		r.ID = fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	if r.StartedAt.IsZero() {
+		r.StartedAt = time.Now()
+	}
+	data, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	dir, err := Dir()
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "history.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(data, '\n'))
+	return err
+}
+
+// RecentHistory returns up to n most-recent records of the given kind,
+// newest first. An empty kind matches all records.
+func RecentHistory(kind runner.Kind, n int) ([]Record, error) {
+	dir, err := Dir()
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(filepath.Join(dir, "history.jsonl"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var out []Record
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 1<<20)
+	for sc.Scan() {
+		line := bytes.TrimSpace(sc.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		var r Record
+		if err := json.Unmarshal(line, &r); err != nil {
 			continue // tolerate bad trailing lines
 		}
-		if kind != "" && rec.Kind != kind {
-			continue
+		if kind == "" || r.Kind == kind {
+			out = append(out, r)
 		}
-		all = append(all, rec)
 	}
-	if n > 0 && len(all) > n {
-		all = all[len(all)-n:]
+	if err := sc.Err(); err != nil {
+		return nil, err
 	}
-	// Newest first.
-	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
-		all[i], all[j] = all[j], all[i]
+	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.After(out[j].StartedAt) })
+	if n > 0 && len(out) > n {
+		out = out[:n]
 	}
-	return all, nil
+	return out, nil
 }
 
-// --- Logs and job materialization ---
-
-// LogPath returns the absolute-ish log path for a run under logs/.
-func LogPath(kind runner.Kind, t time.Time) string {
-	d, err := Dir()
-	if err != nil {
-		d = os.TempDir()
-	}
-	return filepath.Join(d, "logs", fmt.Sprintf("%s-%s.log", string(kind), t.Format("20060102-150405.000")))
-}
-
-var timeoutLineRe = regexp.MustCompile(`(?m)^\s*timeout\s+.*$`)
-
-// MaterializeJob writes preset (the raw job file bytes) to a fresh file under
-// jobs/, replacing (or appending) the timeout line with the given duration.
-// The returned path is absolute. The source preset is never mutated.
+// MaterializeJob writes a copy of preset into the state dir with its timeout
+// line replaced by the given duration (appended if absent). The repo job file
+// is never modified. It returns the absolute path to the materialized job.
 func MaterializeJob(preset []byte, duration time.Duration) (string, error) {
-	d, err := Dir()
+	dir, err := Dir()
 	if err != nil {
 		return "", err
 	}
-	jobsDir := filepath.Join(d, "jobs")
+	jobsDir := filepath.Join(dir, "jobs")
 	if err := os.MkdirAll(jobsDir, 0700); err != nil {
 		return "", err
 	}
 
-	replacement := "timeout " + formatJobTimeout(duration)
+	timeoutLine := "timeout " + formatDuration(duration)
 	content := string(preset)
-	if timeoutLineRe.MatchString(content) {
-		content = timeoutLineRe.ReplaceAllString(content, replacement)
-	} else {
-		content = strings.TrimRight(content, "\n") + "\n" + replacement + "\n"
+	replaced := jobTimeoutRe.ReplaceAllString(content, timeoutLine)
+	if replaced == content {
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		replaced = content + timeoutLine + "\n"
 	}
 
-	path := filepath.Join(jobsDir, fmt.Sprintf("burnin-%d.job", time.Now().UnixNano()))
-	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+	path := filepath.Join(jobsDir, "burnin-memory.job")
+	if err := writeFileAtomic(path, []byte(replaced), 0600); err != nil {
 		return "", err
 	}
-	return filepath.Abs(path)
-}
-
-func formatJobTimeout(d time.Duration) string {
-	switch {
-	case d%time.Minute == 0:
-		return fmt.Sprintf("%dm", int(d/time.Minute))
-	case d%time.Second == 0:
-		return fmt.Sprintf("%ds", int(d/time.Second))
-	default:
-		return fmt.Sprintf("%dms", int(d/time.Millisecond))
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path, nil
 	}
+	return abs, nil
 }
 
-// atomicWrite writes data to path via a temp file + rename in the same dir.
-func atomicWrite(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+func ensureDir(d string) (string, error) {
+	if err := os.MkdirAll(d, 0700); err != nil {
+		return "", err
+	}
+	return d, nil
+}
+
+func loadProfile(path string) (config.Profile, bool, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return config.Profile{}, false, nil
+	}
+	if err != nil {
+		return config.Profile{}, false, err
+	}
+	var p config.Profile
+	if err := json.Unmarshal(data, &p); err != nil {
+		return config.Profile{}, false, fmt.Errorf("parse profile %s: %w", path, err)
+	}
+	return p, true, nil
+}
+
+func profileFileName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('-')
+		}
+	}
+	s := strings.Trim(b.String(), "-")
+	if s == "" {
+		s = "profile"
+	}
+	return s + ".json"
+}
+
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	tmp, err := os.CreateTemp(dir, ".tmp-*")
 	if err != nil {
 		return err
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	if err := tmp.Chmod(0600); err != nil {
-		_ = tmp.Close()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
 		return err
 	}
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmpName, path)
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	if d <= 0 {
+		return "0s"
+	}
+	switch {
+	case d%time.Hour == 0:
+		return fmt.Sprintf("%dh", d/time.Hour)
+	case d%time.Minute == 0:
+		return fmt.Sprintf("%dm", d/time.Minute)
+	default:
+		return fmt.Sprintf("%ds", d/time.Second)
+	}
 }

@@ -1,16 +1,15 @@
-// Package config holds shared leaf types for MemStation: profile snapshots
-// and the canonical field keys. It has no dependencies on other packages in
-// this repository so it can be imported anywhere without creating cycles.
+// Package config holds the canonical field keys and snapshot/profile value
+// containers shared by the store, tabs, and runners.
 package config
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
-// Canonical field keys. Values are stored as raw display strings ("2T",
-// "1.35", "1600") in Snapshot/Profile; parsing happens in helpers, not in
-// every renderer.
+// Canonical field keys. The UI may use display labels, but persisted snapshots
+// and profiles always use these keys.
 const (
 	KeyChannels = "channels"
 	KeyRatio    = "dram_ratio"
@@ -24,14 +23,14 @@ const (
 	KeyVoltage  = "dram_voltage"
 )
 
-// Snapshot is a point-in-time capture of configuration values.
+// Snapshot is an immutable-ish point-in-time copy of configuration values.
 type Snapshot struct {
 	Values     map[string]string `json:"values"` // raw display values
 	CapturedAt time.Time         `json:"captured_at"`
 	Source     string            `json:"source"` // detected|applied|draft
 }
 
-// Profile is a named, persisted set of values.
+// Profile is a named, persisted configuration.
 type Profile struct {
 	Name      string            `json:"name"`
 	Values    map[string]string `json:"values"`
@@ -39,58 +38,80 @@ type Profile struct {
 	Source    string            `json:"source,omitempty"`
 }
 
-// Float returns the numeric value for key, if it parses as a float.
+// Float returns the parsed numeric value for key. It accepts bare numbers and
+// values with a trailing unit such as "2T" or "1.35V".
 func (s Snapshot) Float(key string) (float64, bool) {
-	v, ok := s.Values[key]
-	if !ok {
-		return 0, false
-	}
-	f, err := strconv.ParseFloat(v, 64)
-	if err != nil {
-		return 0, false
-	}
-	return f, true
+	return parseValue(s.Values[key])
 }
 
-// FreqMT returns the DRAM frequency in MT/s (0 if unknown).
+// FreqMT returns the DRAM frequency in MT/s, or 0 if unknown.
 func (s Snapshot) FreqMT() float64 {
-	f, _ := s.Float(KeyFreq)
-	return f
+	v, _ := s.Float(KeyFreq)
+	return v
 }
 
-// Channels returns the detected channel count (0 if unknown).
+// Channels returns the number of memory channels, or 0 if unknown.
 func (s Snapshot) Channels() int {
-	f, _ := s.Float(KeyChannels)
-	return int(f)
+	v, _ := s.Float(KeyChannels)
+	return int(v)
 }
 
-// PeakMBs returns the theoretical peak bandwidth in MB/s (freq * 8 * channels).
+// PeakMBs returns the theoretical peak bandwidth in MB/s.
 func (s Snapshot) PeakMBs() float64 {
 	return s.FreqMT() * 8 * float64(s.Channels())
 }
 
-// CASNs returns the CAS latency in nanoseconds (0 if unknown).
+// CASNs returns the CAS latency in nanoseconds, or 0 if unknown.
 func (s Snapshot) CASNs() float64 {
-	f := s.FreqMT()
-	if f <= 0 {
-		return 0
-	}
+	freq := s.FreqMT()
 	cl, ok := s.Float(KeyCL)
-	if !ok {
+	if !ok || freq <= 0 {
 		return 0
 	}
-	return 2000 * cl / f
+	return 2000 * cl / freq
 }
 
-// Clone returns a deep copy of the snapshot's values map.
+// Clone returns a deep copy of the snapshot.
 func (s Snapshot) Clone() Snapshot {
-	c := Snapshot{
-		Values:     make(map[string]string, len(s.Values)),
-		CapturedAt: s.CapturedAt,
-		Source:     s.Source,
+	out := Snapshot{CapturedAt: s.CapturedAt, Source: s.Source}
+	if s.Values != nil {
+		out.Values = make(map[string]string, len(s.Values))
+		for k, v := range s.Values {
+			out.Values[k] = v
+		}
 	}
-	for k, v := range s.Values {
-		c.Values[k] = v
+	return out
+}
+
+func parseValue(s string) (float64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "?" {
+		return 0, false
 	}
-	return c
+	if v, err := strconv.ParseFloat(s, 64); err == nil {
+		return v, true
+	}
+	// Fall back to the leading numeric prefix for values such as "2T" or "1.35V".
+	var b strings.Builder
+	dot := false
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '.' && !dot:
+			b.WriteRune(r)
+			dot = true
+		default:
+			goto done
+		}
+	}
+done:
+	if b.Len() == 0 {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(b.String(), 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }

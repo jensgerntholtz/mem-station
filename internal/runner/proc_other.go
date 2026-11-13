@@ -2,21 +2,18 @@
 
 package runner
 
-import (
-	"os"
-	"os/exec"
-)
+import "os/exec"
 
-func setProcessGroup(cmd *exec.Cmd) {}
+func setupProcessGroup(cmd *exec.Cmd) {}
 
-func signalTerm(cmd *exec.Cmd) {
-	if cmd != nil && cmd.Process != nil {
-		_ = cmd.Process.Signal(os.Interrupt)
+// terminateProcess is the non-unix fallback: kill the single process.
+func terminateProcess(j *Job) {
+	select {
+	case <-j.started:
+	case <-j.exited:
+		return
 	}
-}
-
-func signalKill(cmd *exec.Cmd) {
-	if cmd != nil && cmd.Process != nil {
-		_ = cmd.Process.Kill()
+	if j.cmd != nil && j.cmd.Process != nil {
+		_ = j.cmd.Process.Kill()
 	}
 }

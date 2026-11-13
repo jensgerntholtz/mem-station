@@ -58,6 +58,8 @@ var (
 	SectionTitle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorSection))
 	Panel          = lipgloss.NewStyle().BorderStyle(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(ColorBorderPanel)).Padding(1, 1)
 	Label          = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorLabel)).Width(20)
+	SelectedLabel  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorLabel)).Background(lipgloss.Color("236")).Width(20)
+	EditingLabel   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorFgMain)).Background(lipgloss.Color("24")).Width(20)
 	Hint           = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorHint))
 	ColHeader      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ColorColHeader))
 	OriginalValue  = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorOrigVal)).Width(10)
@@ -87,3 +89,117 @@ var (
 	MetricMuted    = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorMetricMute))
 	ConsoleLine    = lipgloss.NewStyle().Foreground(lipgloss.Color(ColorMetric))
 )
+
+// Theme is the semantic token set used by the app shell and shared UI helpers.
+// Individual tab renderers may keep using the exported style vars above until
+// Phase 4 migrates them fully onto these tokens.
+type Theme struct {
+	Bg            lipgloss.AdaptiveColor
+	Fg            lipgloss.AdaptiveColor
+	Muted         lipgloss.AdaptiveColor
+	Accent        lipgloss.AdaptiveColor
+	AccentBg      lipgloss.AdaptiveColor
+	Border        lipgloss.AdaptiveColor
+	BorderFocus   lipgloss.AdaptiveColor
+	Success       lipgloss.AdaptiveColor
+	Warning       lipgloss.AdaptiveColor
+	Danger        lipgloss.AdaptiveColor
+	Info          lipgloss.AdaptiveColor
+	Label         lipgloss.AdaptiveColor
+	Value         lipgloss.AdaptiveColor
+	Dim           lipgloss.AdaptiveColor
+	TabActiveFg   lipgloss.AdaptiveColor
+	TabActiveBg   lipgloss.AdaptiveColor
+	TabInactiveFg lipgloss.AdaptiveColor
+	TabInactiveBg lipgloss.AdaptiveColor
+	ButtonFg      lipgloss.AdaptiveColor
+	ButtonBg      lipgloss.AdaptiveColor
+	ButtonFocusFg lipgloss.AdaptiveColor
+	ButtonFocusBg lipgloss.AdaptiveColor
+	StatusFg      lipgloss.AdaptiveColor
+	ErrorBg       lipgloss.AdaptiveColor
+}
+
+// Default returns the semantic theme for a dark or light terminal. Colors are
+// AdaptiveColor values; the global lipgloss/termenv color profile degrades or
+// strips them when NO_COLOR/CLICOLOR=0 is set. The dark flag selects the
+// palette; each token uses the same color for light and dark backgrounds so
+// the chosen appearance is stable regardless of terminal auto-detection.
+func Default(dark bool) Theme {
+	if dark {
+		return Theme{
+			Bg:            solid("234"),
+			Fg:            solid("230"),
+			Muted:         solid("245"),
+			Accent:        solid("111"),
+			AccentBg:      solid("62"),
+			Border:        solid("60"),
+			BorderFocus:   solid("111"),
+			Success:       solid("42"),
+			Warning:       solid("220"),
+			Danger:        solid("196"),
+			Info:          solid("153"),
+			Label:         solid("109"),
+			Value:         solid("230"),
+			Dim:           solid("102"),
+			TabActiveFg:   solid("230"),
+			TabActiveBg:   solid("62"),
+			TabInactiveFg: solid("245"),
+			TabInactiveBg: solid("238"),
+			ButtonFg:      solid("230"),
+			ButtonBg:      solid("62"),
+			ButtonFocusFg: solid("230"),
+			ButtonFocusBg: solid("28"),
+			StatusFg:      solid("220"),
+			ErrorBg:       solid("52"),
+		}
+	}
+	return Theme{
+		Bg:            solid("231"),
+		Fg:            solid("16"),
+		Muted:         solid("240"),
+		Accent:        solid("25"),
+		AccentBg:      solid("39"),
+		Border:        solid("250"),
+		BorderFocus:   solid("25"),
+		Success:       solid("28"),
+		Warning:       solid("172"),
+		Danger:        solid("160"),
+		Info:          solid("24"),
+		Label:         solid("24"),
+		Value:         solid("16"),
+		Dim:           solid("244"),
+		TabActiveFg:   solid("231"),
+		TabActiveBg:   solid("25"),
+		TabInactiveFg: solid("240"),
+		TabInactiveBg: solid("253"),
+		ButtonFg:      solid("231"),
+		ButtonBg:      solid("25"),
+		ButtonFocusFg: solid("231"),
+		ButtonFocusBg: solid("28"),
+		StatusFg:      solid("166"),
+		ErrorBg:       solid("224"),
+	}
+}
+
+// Current is the active theme. It is set once in main via Set and read by the
+// shell and shared UI helpers. Nil means "use the dark default".
+var Current *Theme
+
+// Set installs the active theme.
+func Set(dark bool) {
+	t := Default(dark)
+	Current = &t
+}
+
+// ActiveTheme returns the current theme or the dark default.
+func ActiveTheme() Theme {
+	if Current != nil {
+		return *Current
+	}
+	return Default(true)
+}
+
+func solid(c string) lipgloss.AdaptiveColor {
+	return lipgloss.AdaptiveColor{Light: c, Dark: c}
+}

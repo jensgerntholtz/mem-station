@@ -1,10 +1,5 @@
-// Package runner executes external jobs (benchmarks, burn-in runs) with
-// streamed output, cancellation via process groups, and tee'd log files.
-//
-// Start never blocks: it returns a *Job whose Events channel delivers exactly
-// one EventStarted, zero or more EventOutput, and exactly one EventFinished
-// (after which the channel is closed). Callers must consume events until
-// EventFinished; Wait blocks until the job has reached its terminal state.
+// Package runner executes external jobs, streams their merged output, and
+// exposes a cancellable event stream to the TUI.
 package runner
 
 import (
@@ -16,10 +11,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 )
 
-// Kind identifies the class of job.
+// Kind identifies the logical job type so the app can route events.
 type Kind string
 
 const (
@@ -27,7 +23,7 @@ const (
 	KindBurnIn    Kind = "burnin"
 )
 
-// EventType enumerates the lifecycle events emitted by a Job.
+// EventType is the phase of a job event.
 type EventType int
 
 const (
@@ -36,21 +32,21 @@ const (
 	EventFinished
 )
 
-// Event is a single lifecycle event from a Job.
+// Event is a single lifecycle or output event emitted by a running job.
 type Event struct {
 	Kind     Kind
 	Type     EventType
-	Line     string // populated for EventOutput
+	Line     string
 	At       time.Time
-	ExitCode int   // populated for EventFinished
-	Err      error // populated for EventFinished (nil on success)
+	ExitCode int
+	Err      error
 	LogPath  string
 }
 
 // Spec describes a job to run.
 type Spec struct {
 	Kind     Kind
-	Name     string // fallback binary name when Args is empty
+	Name     string
 	Args     []string
 	Dir      string
 	Env      []string
@@ -58,162 +54,176 @@ type Spec struct {
 	Duration time.Duration
 }
 
-// ErrCancelled is returned (or carried in EventFinished.Err) when a job is
-// cancelled via Cancel or a cancelled parent context.
+// ErrCancelled is returned for a job that was cancelled via Cancel.
 var ErrCancelled = errors.New("job cancelled")
 
-// Job is a running (or finished) job. Its fields are unexported; interact
-// through Events, Cancel, and Wait.
+// Job is a running (or finished) external job. Its fields are unexported on
+// purpose; consumers interact through Events, Cancel, and Wait.
 type Job struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	cmd    *exec.Cmd
+
 	events  chan Event
 	done    chan struct{}
-	waitErr error
-	cmd     *exec.Cmd
-	cancel  context.CancelFunc
+	started chan struct{}
+	exited  chan struct{}
+
+	exitedOnce sync.Once
+	cancelOnce sync.Once
+
+	mu        sync.Mutex
+	cancelled bool
+	resultErr error
 }
 
-// Start launches the job described by spec. The returned Job is non-nil and
-// Start returns immediately.
+// Start launches spec in a goroutine and returns immediately. The caller must
+// consume Events to avoid blocking the job.
 func Start(ctx context.Context, spec Spec) *Job {
-	j := &Job{
-		events: make(chan Event, 64),
-		done:   make(chan struct{}),
-	}
 	ctx, cancel := context.WithCancel(ctx)
-	j.cancel = cancel
+	j := &Job{
+		ctx:     ctx,
+		cancel:  cancel,
+		events:  make(chan Event),
+		done:    make(chan struct{}),
+		started: make(chan struct{}),
+		exited:  make(chan struct{}),
+	}
 
-	j.cmd = buildCommand(spec)
-	setProcessGroup(j.cmd)
+	cmd := exec.CommandContext(ctx, spec.Name, spec.Args...)
+	cmd.Dir = spec.Dir
+	cmd.Env = append(os.Environ(), spec.Env...)
+	setupProcessGroup(cmd)
+	j.cmd = cmd
 
-	go j.run(ctx, spec)
+	go j.run(spec)
 	return j
 }
 
-func buildCommand(spec Spec) *exec.Cmd {
-	if len(spec.Args) > 0 {
-		cmd := exec.Command(spec.Args[0], spec.Args[1:]...)
-		cmd.Dir = spec.Dir
-		cmd.Env = spec.Env
-		return cmd
-	}
-	cmd := exec.Command(spec.Name)
-	cmd.Dir = spec.Dir
-	cmd.Env = spec.Env
-	return cmd
-}
-
-// Events returns the channel of lifecycle events. It is closed after
-// EventFinished is delivered.
+// Events returns the receive side of the job's event stream.
 func (j *Job) Events() <-chan Event { return j.events }
 
-// Cancel requests cancellation. It is idempotent and safe to call before,
-// during, or after the job finishes. The process group receives SIGTERM and,
-// if it does not exit within 3 seconds, SIGKILL.
+// Cancel terminates the job's process group. It is idempotent.
 func (j *Job) Cancel() {
-	j.cancel()
+	j.cancelOnce.Do(func() {
+		j.mu.Lock()
+		j.cancelled = true
+		j.mu.Unlock()
+
+		// Signal the process group first so children are reaped, then cancel
+		// the CommandContext as a fallback.
+		terminateProcess(j)
+		j.cancel()
+	})
 }
 
-// Wait blocks until the job reaches its terminal state and returns the final
-// error (nil on success, ErrCancelled on cancellation).
+// Wait blocks until the job finishes and returns its final error.
 func (j *Job) Wait() error {
 	<-j.done
-	return j.waitErr
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.resultErr
 }
 
-func (j *Job) run(ctx context.Context, spec Spec) {
+func (j *Job) run(spec Spec) {
 	defer close(j.done)
+	defer j.closeExited()
 	defer close(j.events)
 
-	logFile, err := openLog(spec.LogPath)
+	j.emit(Event{Kind: spec.Kind, Type: EventStarted, At: time.Now(), LogPath: spec.LogPath})
+
+	logFile, err := createLog(spec.LogPath)
 	if err != nil {
-		j.waitErr = err
-		j.events <- Event{Kind: spec.Kind, Type: EventFinished, At: time.Now(), Err: err, LogPath: spec.LogPath}
+		j.finish(spec, -1, err)
 		return
 	}
 	defer logFile.Close()
 
-	if ctx.Err() != nil {
-		j.waitErr = ErrCancelled
-		j.events <- Event{Kind: spec.Kind, Type: EventFinished, At: time.Now(), Err: ErrCancelled}
+	// Cancelled before the process started.
+	if j.ctx.Err() != nil {
+		j.finish(spec, -1, ErrCancelled)
 		return
 	}
 
-	// Merge stdout+stderr through a single pipe and tee every line to the log
-	// file while forwarding it as an EventOutput.
 	pr, pw := io.Pipe()
-	j.cmd.Stdout = pw
-	j.cmd.Stderr = pw
-
-	readDone := make(chan struct{})
-	go func() {
-		defer close(readDone)
-		defer pr.Close()
-		scanner := bufio.NewScanner(pr)
-		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-		for scanner.Scan() {
-			line := scanner.Text()
-			_, _ = logFile.WriteString(line + "\n")
-			select {
-			case j.events <- Event{Kind: spec.Kind, Type: EventOutput, Line: line, At: time.Now()}:
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-
-	j.events <- Event{Kind: spec.Kind, Type: EventStarted, At: time.Now(), LogPath: spec.LogPath}
+	defer pw.Close()
+	sw := &syncWriter{w: io.MultiWriter(logFile, pw)}
+	j.cmd.Stdout = sw
+	j.cmd.Stderr = sw
 
 	if err := j.cmd.Start(); err != nil {
-		_ = pw.Close()
-		<-readDone
-		j.waitErr = mapStartError(err)
-		j.events <- Event{Kind: spec.Kind, Type: EventFinished, At: time.Now(), ExitCode: -1, Err: j.waitErr, LogPath: spec.LogPath}
+		j.finish(spec, -1, err)
 		return
 	}
+	close(j.started)
 
-	procDone := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		select {
-		case <-ctx.Done():
-			j.terminate()
-		case <-procDone:
+		defer wg.Done()
+		scanner := bufio.NewScanner(pr)
+		scanner.Buffer(make([]byte, 64*1024), 1<<20)
+		for scanner.Scan() {
+			j.emit(Event{Kind: spec.Kind, Type: EventOutput, Line: scanner.Text(), At: time.Now()})
 		}
 	}()
 
 	waitErr := j.cmd.Wait()
-	close(procDone)
-	_ = pw.Close()
-	<-readDone
+	pw.Close()
+	wg.Wait()
+
+	// Signal cancellation waiters as soon as the process has been reaped,
+	// without waiting for any buffered Finished event to be consumed.
+	j.closeExited()
 
 	exitCode := 0
-	var finErr error
-	switch {
-	case ctx.Err() != nil:
-		finErr = ErrCancelled
-		exitCode = exitCodeOf(waitErr)
-	case waitErr != nil:
-		finErr = mapWaitError(waitErr)
-		exitCode = exitCodeOf(waitErr)
+	if waitErr != nil {
+		if j.isCancelled() {
+			waitErr = ErrCancelled
+			exitCode = -1
+		} else {
+			var ee *exec.ExitError
+			if errors.As(waitErr, &ee) {
+				exitCode = ee.ExitCode()
+				waitErr = fmt.Errorf("%s exited with status %d (log: %s)", spec.Name, exitCode, spec.LogPath)
+			}
+		}
 	}
-
-	j.waitErr = finErr
-	j.events <- Event{Kind: spec.Kind, Type: EventFinished, At: time.Now(), ExitCode: exitCode, Err: finErr, LogPath: spec.LogPath}
+	j.finish(spec, exitCode, waitErr)
 }
 
-// terminate signals the process group with SIGTERM and escalates to SIGKILL
-// after 3 seconds if it is still running. It is only called from the
-// context-cancellation watcher, so it runs at most once per job.
-func (j *Job) terminate() {
-	signalTerm(j.cmd)
-	go func() {
-		time.Sleep(3 * time.Second)
-		signalKill(j.cmd)
-	}()
+func (j *Job) emit(ev Event) {
+	j.events <- ev
 }
 
-func openLog(path string) (*os.File, error) {
+func (j *Job) finish(spec Spec, exitCode int, err error) {
+	j.mu.Lock()
+	j.resultErr = err
+	j.mu.Unlock()
+
+	j.emit(Event{
+		Kind:     spec.Kind,
+		Type:     EventFinished,
+		At:       time.Now(),
+		ExitCode: exitCode,
+		Err:      err,
+		LogPath:  spec.LogPath,
+	})
+}
+
+func (j *Job) isCancelled() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.cancelled
+}
+
+func (j *Job) closeExited() {
+	j.exitedOnce.Do(func() { close(j.exited) })
+}
+
+func createLog(path string) (*os.File, error) {
 	if path == "" {
-		return nil, errors.New("runner: empty log path")
+		return nil, fmt.Errorf("empty log path")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return nil, err
@@ -221,25 +231,13 @@ func openLog(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 }
 
-func exitCodeOf(err error) int {
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		return ee.ExitCode()
-	}
-	return -1
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
 }
 
-func mapStartError(err error) error {
-	if errors.Is(err, exec.ErrNotFound) {
-		return fmt.Errorf("%w: command not found", exec.ErrNotFound)
-	}
-	return err
-}
-
-func mapWaitError(err error) error {
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		return fmt.Errorf("process exited with status %d", ee.ExitCode())
-	}
-	return err
+func (s *syncWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
 }

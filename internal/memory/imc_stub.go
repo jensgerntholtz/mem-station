@@ -2,7 +2,9 @@
 
 package memory
 
-// ReadMCHBARTimings is not supported on non-Linux platforms.
+import "fmt"
+
+// ReadMCHBARTimings returns an unsupported-platform error on non-Linux systems.
 func ReadMCHBARTimings() ([]IMCTimings, error) {
-	return nil, nil
+	return nil, fmt.Errorf("IMC timing read is not supported on this platform")
 }
