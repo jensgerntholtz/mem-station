@@ -1,18 +1,19 @@
+// Package bench parses stress-ng memrate benchmark output. It does not execute
+// jobs; execution is handled by internal/runner.
 package bench
 
 import (
-	"bytes"
-	"fmt"
-	"os/exec"
 	"regexp"
 	"strconv"
 )
 
+// BenchMetric is one parsed memrate sub-metric.
 type BenchMetric struct {
 	Label string
 	Value float64
 }
 
+// BenchResults is the parsed outcome of a memrate benchmark run.
 type BenchResults struct {
 	ReadRate  float64
 	WriteRate float64
@@ -26,18 +27,6 @@ var (
 	metricRe    = regexp.MustCompile(`memrate\s+([\d.]+)\s+(\S+)\s+MB per sec`)
 	durationRe  = regexp.MustCompile(`completed in\s+([\d.]+\s+secs)`)
 )
-
-// RunBenchmarkCmd runs the stress-ng memrate benchmark and parses output.
-func RunBenchmarkCmd() (*BenchResults, error) {
-	cmd := exec.Command("stress-ng", "--memrate", "1", "--memrate-bytes", "256M", "-t", "30", "--metrics")
-	var buf bytes.Buffer
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%v: %s", err, buf.String())
-	}
-	return ParseBenchOutput(buf.String()), nil
-}
 
 // ParseBenchOutput parses stress-ng memrate output.
 func ParseBenchOutput(output string) *BenchResults {

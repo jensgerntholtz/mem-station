@@ -188,3 +188,18 @@ func ParseSPDInfo(spd string) *SPDInfo {
 	}
 	return info
 }
+
+// SizeLabel returns the module size with a unit. dmidecode reports values such
+// as "4096 MB" while decode-dimms reports bare numbers, so callers must not
+// append a unit themselves.
+func (s SPDInfo) SizeLabel() string {
+	v := strings.TrimSpace(s.SizeMB)
+	if v == "" {
+		return ""
+	}
+	upper := strings.ToUpper(v)
+	if strings.HasSuffix(upper, "MB") || strings.HasSuffix(upper, "GB") {
+		return v
+	}
+	return v + " MB"
+}

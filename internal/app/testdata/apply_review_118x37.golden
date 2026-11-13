@@ -1,0 +1,40 @@
+  MemStation   0.2.0-dev  3200 MT/s · 16384 MB · F4-3200C16-16GVK  * unsaved changes                                    
+   1 Timings ~    2 Benchmark    3 Burn-in                                                                              
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                            ╭──────────────────────────────────────────────────────────────╮                            
+                            │ Apply profile                                                │                            
+                            │                                                              │                            
+                            │ Review the differences, then confirm.                        │                            
+                            │                                                              │                            
+                            │ Channels       2 -> 24                                       │                            
+                            │                                                              │                            
+                            │ Warnings                                                     │                            
+                            │ ! Channels: above 8 channels                                 │                            
+                            │                                                              │                            
+                            │ Profile only - not written to hardware                       │                            
+                            │ enter confirm - esc cancel                                   │                            
+                            ╰──────────────────────────────────────────────────────────────╯                            
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+ Detected 2 channels at 3200 MT/s                                                             enter confirm  esc cancel 

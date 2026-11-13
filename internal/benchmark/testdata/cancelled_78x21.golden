@@ -1,0 +1,21 @@
+╭────────────────────────────────────────────────────────────────────────────╮
+│ Benchmark                                                                  │
+│ Duration [ 30s ]  Buffer [256M]  Workers [1]                               │
+│     Enter - Run Again      5s / 30s  [###--------------]  ! cancelled      │
+│ log: /var/lib/mem-station/logs/benchmark.log                               │
+│                                                                            │
+│ error: cancelled                                                           │
+│                                                                            │
+│ Live log (follow: on)                                                      │
+│ stress-ng: info: dispatching memrate workers                               │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+╰────────────────────────────────────────────────────────────────────────────╯

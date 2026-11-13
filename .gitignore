@@ -1,0 +1,46 @@
+# --- Build outputs ----------------------------------------------------------
+# Compiled binaries. `mem-station` and `mem-stationhistory` at the repo root
+# are leftovers from the initial POC and should be deleted from the index
+# (git rm --cached) - ignoring them only stops new copies from being tracked.
+/mem-station
+/mem-stationhistory
+*.exe
+*.test
+*.out
+coverage.*
+/dist/
+
+# --- Local runtime state ---------------------------------------------------
+# The app stores profiles, history and run logs under
+# $MEM_STATION_STATE_DIR, $XDG_STATE_HOME/mem-station or
+# ~/.local/state/mem-station - i.e. outside the repo by default. These cover
+# the case where you point MEM_STATION_STATE_DIR or --state-dir inside the
+# working tree for testing.
+/.state/
+/state/
+/mem-station-state/
+profiles/active.json
+history.jsonl
+logs/
+
+# Run logs produced by the benchmark/burn-in runner.
+*.log
+
+# --- Go workspace ----------------------------------------------------------
+# Local-only by convention; go.mod/go.sum stay tracked.
+go.work
+go.work.sum
+
+# --- Editor / OS noise -----------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# --- Patch leftovers -------------------------------------------------------
+*.orig
+*.rej
+*.tmp

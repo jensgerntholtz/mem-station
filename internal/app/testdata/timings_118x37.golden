@@ -1,0 +1,40 @@
+  MemStation   0.2.0-dev  3200 MT/s · 16384 MB · F4-3200C16-16GVK                                                       
+   1 Timings    2 Benchmark    3 Burn-in                                                                                
+ ╭───────────────────────────────────────────────────────────────────────╮  ╭─────────────────────────────────────────╮ 
+ │ Timings                                                               │  │ Guidance                                │ 
+ │ Setting           Detected   Draft      Margin    Safety              │  │ Perf Projection                         │ 
+ │ General                                                               │  │ Peak:      51.20 GB/s                   │ 
+ │ Channels          2          2          +1        ok                  │  │ Per chan:  25.60 GB/s                   │ 
+ │ DRAM Ratio        16         16                                       │  │ Sustained: 41.98 GB/s (82% eff)         │ 
+ │ DRAM Freq         3200       3200       +2400     ok                  │  │ CAS:       10.00 ns                     │ 
+ │                                                                       │  │                                         │ 
+ │ Primary Timings                                                       │  │ Derived                                 │ 
+ │ CAS (tCL)         16         16         0         ok                  │  │ tRC:  35.0 ns (tRAS+tRP)                │ 
+ │ tRCD              18         18         +2        ok                  │  │ tRFC: 218.8 ns (min 160 ns)             │ 
+ │ tRP               18         18         +2        ok                  │  │                                         │ 
+ │ tRAS              38         38         +4        ok                  │  │ Channels                                │ 
+ │                                                                       │  │ Populated memory channels.              │ 
+ │ Secondary Timings                                                     │  │ safe: 1-8 channels (1-8)                │ 
+ │ Command Rate      1T         1T         0T        ok                  │  │                                         │ 
+ │ tRFC              350        350        +94       ok                  │  │ Safety                                  │ 
+ │                                                                       │  │ ok     10 fields                        │ 
+ │ Voltage                                                               │  │ ? info 0                                │ 
+ │ DRAM Voltage      1.35 V     1.35 V     0V        ok                  │  │ ! warn 0                                │ 
+ │ ctrl+s apply - ctrl+r reset - l lock[on]                              │  │ x danger 0                              │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │ Detection                               │ 
+ │                                                                       │  │ ok                                      │ 
+ │                                                                       │  │ Detected 2 channels at 3200 MT/s        │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │ Views                                   │ 
+ │                                                                       │  │ [ / ]  Timings - SPD - IMC              │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ │                                                                       │  │                                         │ 
+ ╰───────────────────────────────────────────────────────────────────────╯  ╰─────────────────────────────────────────╯ 
+ Detected 2 channels at 3200 MT…↑/k select  enter edit  tab next field  l ratio lock  ctrl+s apply profile  ] next view 

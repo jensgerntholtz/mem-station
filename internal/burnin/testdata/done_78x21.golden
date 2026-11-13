@@ -1,0 +1,21 @@
+╭────────────────────────────────────────────────────────────────────────────╮
+│ Burn-in                                                                    │
+│ Preset [ memory-heavy (embedded) ]  Duration [30m]  Stop on error [on]     │
+│     Enter - Run Again      5m / 30m  [###--------------]  ok passed        │
+│                                                                            │
+│ Result · passed                                                            │
+│ Verdict PASS   Elapsed 5m   Errors 0   Exit 0                              │
+│ log: /var/lib/mem-station/logs/burnin.log  (full run: view the log file)   │
+│                                                                            │
+│ Live log (follow: on, filter: all)                                         │
+│ stress-ng: info: dispatching stressors                                     │
+│ stress-ng: info: successful run completed in 300.00 secs                   │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+│                                                                            │
+╰────────────────────────────────────────────────────────────────────────────╯

@@ -1,14 +1,13 @@
+// Command mem-station runs the MemStation memory timing workspace TUI and its
+// headless info/bench/burnin subcommands.
 package main
 
 import (
-	"mem-station/internal/model"
+	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
+	"mem-station/internal/cli"
 )
 
 func main() {
-	p := tea.NewProgram(model.InitialModel(), tea.WithAltScreen(), tea.WithMouseAllMotion())
-	if _, err := p.Run(); err != nil {
-		panic(err)
-	}
+	os.Exit(cli.Run(os.Args[1:], cli.DefaultDeps()))
 }

@@ -1,0 +1,41 @@
+name: CI
+
+# Static checks and the default test suite. Nothing here needs root, hardware,
+# dmidecode, decode-dimms, or stress-ng: tests inject detection, jobs, and an
+# isolated MEM_STATION_STATE_DIR.
+on:
+  push:
+    branches: [main, tui-improvements]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt is required for:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test ./... -count=1
