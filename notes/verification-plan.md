@@ -106,6 +106,17 @@ Expected:
     suppresses warnings such as an unreadable configured job file.
   - Exit codes: unknown command or flag → `2`; a failed bench/burn-in → `1`
     with the verdict on stdout and no extra error banner; `130` on interrupt.
+- Dialogs and pickers (P3):
+  - Help, the apply review and every prompt float over the tab instead of
+    replacing it; the frame stays exactly 80x24 and 120x40.
+  - `ctrl+l`: the picker lists saved profiles, `/` filters, ↑/↓ selects, enter
+    loads into the draft, esc/q close. It must never quit the program.
+  - `ctrl+o`: the browser starts in the working directory, `*.json` files are
+    selectable, `h`/`backspace`/`←` go up, esc closes. An invalid file keeps
+    the dialog open with the reason inside it.
+  - `ctrl+e` in Burn-in: the embedded preset explains that `--job PATH` is
+    needed; a custom job file opens in `$EDITOR` and is reloaded on return.
+  - The terminal progress bar appears only while a bench/burn-in is running.
 
 CI (`.github/workflows/ci.yml`) runs gofmt, `go vet ./...`, `go build ./...`,
 and `go test ./... -count=1` on `ubuntu-latest`. CI does not run hardware, the

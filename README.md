@@ -117,12 +117,17 @@ Global keys work whenever no text input or modal owns the keyboard.
 | `ctrl+r` | reset the draft to the applied values |
 | `[`/`]` | Timings, SPD, and IMC views |
 | `ctrl+p` | save the draft as a named profile |
-| `ctrl+l` | load a named profile into the draft |
+| `ctrl+l` | pick a saved profile (↑/↓, `/` filters, enter loads) |
 | `ctrl+e` | export the active profile JSON to a path you type |
-| `ctrl+o` | import a profile JSON file into the draft (validated) |
+| `ctrl+o` | browse for a profile JSON file to import into the draft (validated) |
 
 Named profiles, imports, and exports only ever change the draft. Applying is the
 only step that writes the active profile, and it never touches hardware.
+
+`ctrl+l` and `ctrl+o` open pickers rather than asking you to type a name or an
+absolute path; `esc` closes either one without changing the draft. The built-in
+burn-in preset is compiled in, so `ctrl+e` only has a file to edit when you
+start with `--job PATH` (or `MEM_STATION_JOB`).
 
 ### Benchmark
 
@@ -147,6 +152,7 @@ only step that writes the active profile, and it never touches hardware.
 | `e` | toggle the errors-only log filter |
 | `f` | toggle log follow |
 | `s` | export the last result JSON into the state dir |
+| `ctrl+e` | edit the selected job file in `$EDITOR` (custom jobs only) |
 | `pgup`/`pgdown` | scroll the log |
 
 ## Headless commands

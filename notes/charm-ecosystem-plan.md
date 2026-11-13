@@ -1,7 +1,9 @@
 # Plan: lean into the Charmbracelet ecosystem
 
-Status: P0 (guardrails), P1 (v2 stack migration) and P2 (CLI: fang/log/tone) are
-**done**. P3 onward is open.
+Status: P0 (guardrails), P1 (v2 stack migration), P2 (CLI: fang/log/tone) and
+P3 (overlay, pickers, progress, $EDITOR) are **done**. P4 onward is open; the one
+deliberate omission in P3 is the bubbles/table history migration, with the
+measurement recorded there.
 Scope: which `github.com/charmbracelet` repos and libraries apply to MemStation,
 what each buys us, and in what order to adopt them.
 
@@ -34,8 +36,8 @@ Three tiers.
 | Library | Why |
 | --- | --- |
 | `glamour` v2 (`charm.land/glamour/v2` v2.0.1) | `mem-station report` renders profile/SPD/history as styled markdown; optionally render `notes/*.md` inside the help overlay. |
-| `x/editor` (v0.2.0) | Open burn-in job files in `$EDITOR` through `tea.ExecProcess` (the elevate path already uses it). |
-| `filepicker` / `list` / `table` (bubbles v2) | Replace typed-name prompts for save/load/import/export and the hand-maintained history columns. |
+| `x/editor` (v0.2.0) | Open burn-in job files in `$EDITOR` through `tea.ExecProcess`. Done (P3). |
+| `filepicker` / `list` (bubbles v2) | Replace typed-name prompts for load and import. Done (P3). `table` was measured and deliberately skipped — see P3. |
 
 **Skip (and why).**
 
@@ -74,12 +76,12 @@ All 57 repos returned by `GET /orgs/charmbracelet/repos` (Nov 2026), plus the
 
 | Repo / module | Latest | Fit |
 | --- | --- | --- |
-| `bubbles/list` | via v2.2.1 | **P3** profile picker for `ctrl+l` (today: typed name) |
-| `bubbles/filepicker` | via v2.2.1 | **P3** import/export path chooser |
-| `bubbles/table` | via v2.2.1 | **P3** bench + burn-in history tables only (timings grid stays hand-rolled: group headers, per-cell margin/safety styling) |
-| `bubbles/progress` | via v2.2.1 | optional; safer to use `tea.View.ProgressBar` (OSC 9;4) and keep the in-panel ASCII bar golden-stable |
+| `bubbles/list` | via v2.2.1 | done (P3): profile picker for `ctrl+l` |
+| `bubbles/filepicker` | via v2.2.1 | done (P3): import browser for `ctrl+o` |
+| `bubbles/table` | via v2.2.1 | deliberately not adopted: pads cells, highlights row 0, counts the header in `WithHeight`, expands columns. The hand-rolled history keeps per-cell verdict colour and 80x24-fit widths |
+| `bubbles/progress` | via v2.2.1 | not adopted; `tea.View.ProgressBar` (OSC 9;4) is used instead, keeping the in-panel ASCII bar golden-stable |
 | `bubbles/help`, `key` | via v2.2.1 | `key` already used; keep the custom scrollable help overlay |
-| `bubbles/textarea` | via v2.2.1 | **P3** job file editor (today job files are read-only, set by `--job`) |
+| `bubbles/textarea` | via v2.2.1 | not adopted: `$EDITOR` via `x/editor` edits job files better |
 | `bubbles/spinner`, `stopwatch`, `timer`, `paginator`, `cursor` | via v2.2.1 | no: spinner is derived from the app's elapsed tick on purpose |
 | `fang` → `charm.land/fang/v2` | v2.0.1 | done: cobra tree, styled help/errors, completions, man pages |
 | `log` → `charm.land/log/v2` | v2.0.1 | done: `--log-file`, `-v`/`-q`, structured run events |
@@ -111,7 +113,7 @@ All 57 repos returned by `GET /orgs/charmbracelet/repos` (Nov 2026), plus the
 | --- | --- |
 | `x/ansi` | already used for `Truncate`; keep |
 | `x/term` | terminal size/isatty helpers behind bubbletea |
-| `x/editor` | **P4** `$EDITOR` for job files |
+| `x/editor` | done (P3): `ctrl+e` edits the selected job file |
 | `x/exp/teatest` | no: v1-only |
 | `x/exp/golden` | no: `internal/uitest` covers it |
 | `x/exp/charmtone` | deprecated: use `charm.land/tone` |
@@ -238,26 +240,40 @@ colors (`#f7f6fb`, `#a2a0ad`, `#8b75ff`), `--tab=burn-in` opens the burn-in tab,
 `-json -v --log-file` keeps stdout pure and writes the trace to both stderr and
 the file, and `-q` suppresses a missing-job warning.
 
-### P3 — Components: profile list, filepicker, history table, job editor (3-4 days)
+### P3 — Components: overlay, profile picker, file browser, progress, $EDITOR — **mostly done**
 
-| Feature | Files | Component |
-| --- | --- | --- |
-| `ctrl+l` load profile | `internal/sysinfo/{model,update,view}.go` | `bubbles/v2/list` with a delegate styled by `internal/style` |
-| `ctrl+o` import / `ctrl+e` export path | same | `bubbles/v2/filepicker` in a sized modal (`DirAllowed`, hidden toggle) |
-| bench + burn-in history | `internal/{benchmark,burnin}/view.go` | `bubbles/v2/table` (data only, no group headers) |
-| job file view/edit | `internal/burnin/*` | read-only view + `x/editor` / `tea.ExecProcess` for `$EDITOR`; `textarea` only if in-TUI editing is worth it |
-| first run | new | skip unless there is something to configure |
+Landed in four commits (`ui: composite tab dialogs…`, `sysinfo: replace the
+load-profile prompt…`, `sysinfo: browse for profile JSON files…`,
+`tui: report job progress…`). No new modules except `bubbles/list`,
+`bubbles/filepicker` (same module) and `github.com/charmbracelet/x/editor`.
 
-Keep hand-rolled: the timings grid (`sysinfo.editorBody`), the footer
-(`ui.Footer`), the scrollable help overlay, and `ui.Progress` inside panels —
-all are golden-covered and already correct.
+What shipped:
 
-Component theming: v2 components take `Styles` structs; map every style from
-`style.ActiveTheme()` so `--dark=false` and `NO_COLOR` stay coherent.
+| Slice | Result |
+| --- | --- |
+| Overlay compositor | `app.Tab` gained `Overlay(w, h) (string, bool)`; tabs keep rendering their normal view and hand the bare dialog to the shell, which centres it with `lipgloss.NewCompositor`. Help, apply review and prompts now float over the tab instead of replacing it; `Modal`/help set an explicit background so nothing bleeds through. |
+| Profile picker | `ctrl+l` is a `bubbles/list` with a single-line theme-styled delegate, `/` filtering, and rebuilt items on every open. The list's own quit bindings are unbound so a stray key can never quit the program from a dialog. |
+| Import browser | `ctrl+o` is a `bubbles/filepicker` confined to `*.json`, starting in the working directory, auto-sized in the dialog. `esc` closes the dialog; `h`/`backspace`/`←` still walk up. A validation failure keeps the dialog open with the reason inside it. |
+| Native progress | `app.Tab.Progress() float64`; the root view maps it to `tea.View.ProgressBar` (OSC 9;4) so a long burn-in shows in the terminal itself. The in-panel ASCII bar is unchanged. |
+| Job editing | burn-in `ctrl+e` opens the selected preset's file in `$EDITOR` via `x/editor` + `tea.ExecProcess`, then reloads the presets. The embedded preset has no file, so the binding explains `--job PATH`; editing is refused while a run is active. |
 
-Acceptance: new golden views for the list, filepicker and table at 80x24 and
-120x40; keys that type letters no longer leak to global bindings (`Editing()`
-and `ModalOpen()` are honoured); `store` round-trips unchanged.
+Deliberately **not** done:
+
+- **`bubbles/table` for the run history.** Measured before implementing: a
+  `table.Model` pads every cell, highlights row 0 as "selected" (needs styles
+  neutralised), counts the header inside `WithHeight`, and expands columns to
+  fill `WithWidth`. The two history blocks already use per-cell semantic colour
+  (verdict → success/danger/warn) and hand-tuned widths that fit 80x24, so the
+  table would add chrome, force a layout rewrite and change two goldens for no
+  user-visible gain. The hand-rolled `ui.JoinColumns` tables stay.
+- **`textarea` for job editing.** `$EDITOR` is the better tool and needs no
+  in-TUI editor state machine.
+- **First-run wizard.** There is nothing to configure on first launch.
+
+Tests/goldens: new `profile_picker_118x37` golden (seeded with three profiles);
+`help_*`, `apply_review_*` and `profile_prompt_*` regenerated for the overlay.
+The import browser has no golden because it renders an absolute directory —
+it is covered by a content/size test instead.
 
 ### P4 — Reports: glamour v2 (2-3 days, separate branch)
 
@@ -326,11 +342,9 @@ Already covered by P1, so the manual matrix no longer needs to prove it:
 
 ## 5. Recommended next slice
 
-P0, P1 and P2 are done. Next is **P3**, starting with the overlay compositor
-(the one v2 feature the migration had to leave on the table), then the profile
-`list` and `filepicker` components.
-
----
+P4: `glamour` v2 for a `mem-station report --markdown` command that renders the
+applied profile, SPD, IMC availability and recent history, reusing the existing
+export schema instead of inventing a second one.
 
 ## 6. Open questions
 
