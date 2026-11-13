@@ -9,31 +9,57 @@ import (
 	"mem-station/internal/runner"
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
+
+	"github.com/spf13/cobra"
 )
+
+// benchOptions are the flags of the bench command.
+type benchOptions struct {
+	duration time.Duration
+	buffer   string
+	workers  int
+	asJSON   bool
+	out      string
+}
+
+// newBenchCmd builds the bench subcommand.
+func newBenchCmd(deps Deps) *cobra.Command {
+	defaults := benchmark.DefaultOptions()
+	opts := benchOptions{
+		duration: defaults.Duration,
+		buffer:   defaults.Buffer,
+		workers:  defaults.Workers,
+	}
+	cmd := &cobra.Command{
+		Use:   "bench",
+		Short: "Run the stress-ng memrate benchmark",
+		Long: `Run the stress-ng memrate benchmark headless and report the parsed result.
+
+The full run log is always written under the state directory; --out also writes
+the JSON document to a path you choose. The run is attributed to the applied
+profile, so apply a profile first if you want the configuration recorded.`,
+		Args: cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			return runBench(deps, opts)
+		},
+	}
+	cmd.Flags().DurationVar(&opts.duration, "duration", defaults.Duration, "run length, e.g. 15s, 1m, 5m")
+	cmd.Flags().StringVar(&opts.buffer, "buffer", defaults.Buffer, "stress-ng --memrate-bytes: 128M, 256M, 512M, 1G")
+	cmd.Flags().IntVar(&opts.workers, "workers", defaults.Workers, "concurrent memrate workers")
+	cmd.Flags().BoolVar(&opts.asJSON, "json", false, "print one JSON object on stdout")
+	cmd.Flags().StringVar(&opts.out, "out", "", "also write the JSON result to this path")
+	return cmd
+}
 
 // runBench runs the stress-ng memrate benchmark headless and reports the parsed
 // result on stdout.
-func runBench(deps Deps, args []string) int {
-	defaults := benchmark.DefaultOptions()
-	fs := newFlagSet("bench", deps)
-	duration := fs.Duration("duration", defaults.Duration, "run length, e.g. 15s, 1m, 5m")
-	buffer := fs.String("buffer", defaults.Buffer, "stress-ng --memrate-bytes: 128M, 256M, 512M, 1G")
-	workers := fs.Int("workers", defaults.Workers, "concurrent memrate workers")
-	asJSON := fs.Bool("json", false, "print one JSON object on stdout")
-	out := fs.String("out", "", "also write the JSON result to this path")
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
-	}
-	if fs.NArg() > 0 {
-		fmt.Fprintf(deps.Stderr, "mem-station bench: unexpected argument %q\n", fs.Arg(0))
-		return ExitUsage
-	}
-
-	opts := benchmark.Options{Duration: *duration, Buffer: *buffer, Workers: *workers}
+func runBench(deps Deps, o benchOptions) error {
+	opts := benchmark.Options{Duration: o.duration, Buffer: o.buffer, Workers: o.workers}
 	if err := opts.Validate(); err != nil {
-		fmt.Fprintln(deps.Stderr, "mem-station bench:", err)
-		return ExitUsage
+		return usageErr(err)
 	}
+	deps.Log.Debug("starting benchmark",
+		"duration", opts.Duration, "buffer", opts.Buffer, "workers", opts.Workers)
 
 	ctx, stop := deps.context()
 	defer stop()
@@ -47,6 +73,9 @@ func runBench(deps Deps, args []string) int {
 	}
 	res := runJob(ctx, deps.Start, spec)
 	results := bench.ParseBenchOutput(res.Output)
+	deps.Log.Debug("benchmark finished",
+		"exit_code", res.ExitCode, "read_mbs", results.ReadRate, "write_mbs", results.WriteRate,
+		"duration", res.duration(), "log", res.LogPath)
 	payload := benchmark.NewPayload(opts, results)
 
 	rec := newRecord(runner.KindBenchmark, res, payload)
@@ -63,23 +92,21 @@ func runBench(deps Deps, args []string) int {
 		Result:     payload,
 	}
 	saved := ""
-	if *out != "" {
-		path, err := store.ExportFile(*out, doc)
+	if o.out != "" {
+		path, err := store.ExportFile(o.out, doc)
 		if err != nil {
-			fmt.Fprintln(deps.Stderr, "mem-station bench: export failed:", err)
-			return ExitFailed
+			return fail(fmt.Errorf("export failed: %w", err))
 		}
 		saved = path
 	}
-	if *asJSON {
+	if o.asJSON {
 		if err := writeJSON(deps.Stdout, doc); err != nil {
-			fmt.Fprintln(deps.Stderr, "mem-station bench:", err)
-			return ExitFailed
+			return fail(err)
 		}
 	} else {
 		printBenchHuman(deps, opts, res, payload, saved)
 	}
-	return benchExitCode(res, payload)
+	return exitCodeErr(benchExitCode(res, payload))
 }
 
 // benchExitCode maps the run outcome to a process exit code.

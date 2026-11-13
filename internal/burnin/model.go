@@ -13,9 +13,9 @@ import (
 	"mem-station/internal/runner"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 // configRow identifies one row of the run configuration.
@@ -47,9 +47,12 @@ type Model struct {
 	// now is the clock used for elapsed time; tests pin it.
 	now func() time.Time
 
-	presets       []Preset
-	presetWarn    string
-	presetIndex   int
+	presets     []Preset
+	presetWarn  string
+	presetIndex int
+	// customJob is the configured --job/MEM_STATION_JOB path, "" when only the
+	// embedded preset is available. It is reloaded after $EDITOR exits.
+	customJob     string
 	durationIndex int
 	custom        time.Duration
 	stopOnError   bool
@@ -94,7 +97,7 @@ func New(jobPath string, snapshot config.Snapshot) *Model {
 	in := textinput.New()
 	in.Prompt = ""
 	in.CharLimit = 8
-	in.Width = 8
+	in.SetWidth(8)
 
 	presets, warn := Presets(jobPath)
 
@@ -105,12 +108,13 @@ func New(jobPath string, snapshot config.Snapshot) *Model {
 		now:           time.Now,
 		presets:       presets,
 		presetWarn:    warn,
+		customJob:     jobPath,
 		durationIndex: durationIndexDefault,
 		custom:        time.Hour,
 		stopOnError:   true,
 		input:         in,
 		follow:        true,
-		vp:            viewport.New(60, 10),
+		vp:            viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
 		keys:          DefaultKeyMap(),
 	}
 }
@@ -132,6 +136,14 @@ func (m *Model) ModalOpen() bool { return false }
 
 // Running reports whether a burn-in job is active.
 func (m *Model) Running() bool { return m.state == runner.StateRunning }
+
+// Progress reports the running job's completion in 0..1, or -1 when idle.
+func (m *Model) Progress() float64 {
+	if !m.Running() {
+		return -1
+	}
+	return m.progress() / 100
+}
 
 // Dirty reports whether unattributed changes exist (never here).
 func (m *Model) Dirty() bool { return false }
@@ -167,7 +179,7 @@ func (m *Model) Keys() []ui.KeyHint {
 	case m.Running():
 		return hints(m.keys.Cancel, m.keys.Filter, m.keys.Follow, m.keys.ScrollUp, m.keys.ScrollDn)
 	default:
-		return hints(m.keys.Run, m.keys.Up, m.keys.Prev, m.keys.Filter, m.keys.Follow)
+		return hints(m.keys.Run, m.keys.Up, m.keys.Prev, m.keys.Filter, m.keys.Follow, m.keys.EditJob)
 	}
 }
 

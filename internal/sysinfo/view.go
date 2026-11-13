@@ -7,8 +7,8 @@ import (
 	"mem-station/internal/style"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/viewport"
+	"charm.land/lipgloss/v2"
 )
 
 const (
@@ -27,9 +27,6 @@ const (
 func (m *Model) View(w, h int) string {
 	if w < 1 || h < 1 {
 		return ""
-	}
-	if m.modal != modalNone {
-		return m.viewModal(w, h)
 	}
 	switch m.subView {
 	case subSPD:
@@ -83,8 +80,8 @@ func (m *Model) viewReadOnly(w, h int, title string, vp *viewport.Model, lines [
 	if contentH < 1 {
 		contentH = 1
 	}
-	vp.Width = contentW
-	vp.Height = contentH
+	vp.SetWidth(contentW)
+	vp.SetHeight(contentH)
 	// SetContent keeps the scroll offset, so re-rendering after a resize or a
 	// detection update never jumps the view back to the top.
 	vp.SetContent(strings.Join(lines, "\n"))
@@ -474,14 +471,24 @@ func countIssues(issues []Issue) (danger, warn, info int) {
 	return danger, warn, info
 }
 
-/* --------------- Apply review modal --------------- */
+/* --------------- Modals --------------- */
 
-// viewModal renders the open modal centred in the body.
-func (m *Model) viewModal(w, h int) string {
-	if m.modal == modalApply {
-		return m.viewApplyModal(w, h)
+// Overlay returns the open dialog for the shell to composite over the tab. The
+// tab itself keeps rendering its normal view, so the editor stays visible
+// behind the dialog.
+func (m *Model) Overlay(w, h int) (string, bool) {
+	switch m.modal {
+	case modalNone:
+		return "", false
+	case modalApply:
+		return m.applyDialog(w, h), true
+	case modalLoadProfile:
+		return m.pickerDialog(w, h), true
+	case modalImportProfile:
+		return m.importDialog(w, h), true
+	default:
+		return m.promptDialog(w), true
 	}
-	return m.viewPromptModal(w, h)
 }
 
 // modalWidth fits a dialog into the body width.
@@ -499,13 +506,13 @@ func modalWidth(w int) int {
 	return modalW
 }
 
-// viewPromptModal renders a profile name/path prompt.
-func (m *Model) viewPromptModal(w, h int) string {
+// promptDialog renders a profile name/path prompt.
+func (m *Model) promptDialog(w int) string {
 	modalW := modalWidth(w)
 	innerW := modalW - 4
 	clip := func(s string) string { return ui.Truncate(s, innerW, true) }
 
-	m.prompt.Width = max(8, innerW-2)
+	m.prompt.SetWidth(max(8, innerW-2))
 	body := []string{
 		style.Muted().Render(clip(m.promptHint)),
 		"",
@@ -515,12 +522,11 @@ func (m *Model) viewPromptModal(w, h int) string {
 		body = append(body, "", style.Danger().Render(clip(m.promptErr)))
 	}
 	body = append(body, "", style.Muted().Render(clip("enter confirm - esc cancel")))
-	modal := ui.Modal(m.modal.Title(), body, modalW)
-	return ui.ClipLines(lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal), h)
+	return ui.Modal(m.modal.Title(), body, modalW)
 }
 
-// viewApplyModal renders the review dialog centred in the body.
-func (m *Model) viewApplyModal(w, h int) string {
+// applyDialog renders the review dialog.
+func (m *Model) applyDialog(w, h int) string {
 	modalW := modalWidth(w)
 	budget := h - 6 // borders, title, and padding
 	if budget < 3 {
@@ -530,8 +536,7 @@ func (m *Model) viewApplyModal(w, h int) string {
 	if len(body) > budget {
 		body = body[:budget]
 	}
-	modal := ui.Modal("Apply profile", body, modalW)
-	return ui.ClipLines(lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, modal), h)
+	return ui.Modal("Apply profile", body, modalW)
 }
 
 // applyReviewLines renders the applied -> draft diff, the validation warnings,

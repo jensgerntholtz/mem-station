@@ -1,0 +1,43 @@
+#!/bin/sh
+# Deterministic stress-ng stand-in used by the demo tapes.
+#
+# The tapes drive the real MemStation TUI, but a real burn-in runs for 30
+# minutes and a real memrate benchmark needs the actual stress-ng binary. This
+# script prints the same line shapes the parsers expect, paced so the live log
+# looks alive, and exits 0. It is only on PATH while demo/record.sh runs.
+set -eu
+
+case " $* " in
+*" --memrate "*)
+	# Benchmark: the parser wants read/write rates and a duration.
+	printf 'stress-ng: info:  [2200] setting to a 15 second run per stressor\n'
+	sleep 0.5
+	printf 'stress-ng: memrate: info: [2201] memrate: read rate 21400.00 MB per sec\n'
+	sleep 0.6
+	printf 'stress-ng: memrate: info: [2201] memrate: write rate 18100.00 MB per sec\n'
+	sleep 0.6
+	printf 'stress-ng: memrate: info: [2201] memrate: read64 20000.00 MB per sec\n'
+	sleep 0.6
+	printf 'stress-ng: memrate: info: [2201] memrate: write64 17600.00 MB per sec\n'
+	sleep 0.5
+	printf 'stress-ng: info:  [2200] successful run completed in 3.42 secs\n'
+	;;
+*)
+	# Burn-in: no line may match the error filter, and the run must exit 0.
+	printf 'stress-ng: info:  [2100] dispatching hogs: 39\n'
+	sleep 0.5
+	printf 'stress-ng: info:  [2100] setting to a 30 second run per stressor\n'
+	sleep 0.5
+	printf 'stress-ng: vm:      info: [2140] vm: 1420000 bogo ops/s\n'
+	sleep 0.5
+	printf 'stress-ng: stream:  info: [2148] stream: 21400.00 MB per sec\n'
+	sleep 0.5
+	printf 'stress-ng: memthrash: info: [2144] memthrash: 980000 bogo ops/s\n'
+	sleep 0.5
+	printf 'stress-ng: matrix:  info: [2137] matrix: 12000.00 matrices per sec\n'
+	sleep 0.6
+	printf 'stress-ng: info:  [2100] successful run completed in 3.42 secs\n'
+	;;
+esac
+
+exit 0

@@ -11,8 +11,9 @@ import (
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/key"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Update handles messages for the Timings tab and returns any follow-up
@@ -21,7 +22,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	if m.modal != modalNone {
 		return m.updateModal(msg)
 	}
-	keyMsg, ok := msg.(tea.KeyMsg)
+	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		// Cursor blink and paste messages belong to the focused input.
 		if m.editing {
@@ -32,7 +33,7 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 	return m.handleKey(keyMsg)
 }
 
-func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
+func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// While editing, only the edit-control keys are interpreted here; every
 	// other key goes to the text input (so "q" types a letter).
 	if m.editing {
@@ -301,10 +302,17 @@ func (m *Model) updateInput(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 	f := m.fields[m.focus]
-	if keyMsg, ok := msg.(tea.KeyMsg); ok && len(keyMsg.Runes) > 0 {
-		keyMsg.Runes = filterInputRunes(f, keyMsg.Runes, m.input.Value())
-		if len(keyMsg.Runes) == 0 {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok && keyMsg.Text != "" {
+		// Bubble Tea v2 carries printable input as a string, so the field's
+		// character filter rewrites Text (and Code when it is a single rune)
+		// instead of the v1 rune slice.
+		text := string(filterInputRunes(f, []rune(keyMsg.Text), m.input.Value()))
+		if text == "" {
 			return nil
+		}
+		keyMsg.Text = text
+		if r := []rune(text); len(r) == 1 {
+			keyMsg.Code = r[0]
 		}
 		msg = keyMsg
 	}
@@ -413,9 +421,16 @@ func (m *Model) openApply() tea.Cmd {
 }
 
 // updateModal routes messages while a modal owns the input: the apply review
-// confirms on enter, the profile prompts additionally forward typing.
+// confirms on enter, the load picker is driven by its list, and the profile
+// prompts additionally forward typing.
 func (m *Model) updateModal(msg tea.Msg) tea.Cmd {
-	keyMsg, ok := msg.(tea.KeyMsg)
+	switch m.modal {
+	case modalLoadProfile:
+		return m.updatePicker(msg)
+	case modalImportProfile:
+		return m.updateImportPicker(msg)
+	}
+	keyMsg, ok := msg.(tea.KeyPressMsg)
 	if !ok {
 		if m.modal.prompt() {
 			var cmd tea.Cmd
@@ -466,21 +481,12 @@ func (m *Model) openSaveProfile() tea.Cmd {
 	return nil
 }
 
-// openLoadProfile prompts for the name of a saved profile. The hint lists what
-// is available so the tab can be driven without guessing.
+// openLoadProfile opens the saved-profile picker. The list is rebuilt on every
+// open so a profile saved or imported since the last time shows up.
 func (m *Model) openLoadProfile() tea.Cmd {
 	m.commitEdit()
-	names, err := store.ListProfiles()
-	hint := "name of a saved profile"
-	switch {
-	case err != nil:
-		hint = "profile list unavailable: " + err.Error()
-	case len(names) == 0:
-		hint = "no saved profiles yet - ctrl+p saves the draft"
-	default:
-		hint = "saved: " + strings.Join(names, ", ")
-	}
-	m.openPrompt(modalLoadProfile, "", hint)
+	m.refreshProfiles()
+	m.modal = modalLoadProfile
 	return nil
 }
 
@@ -496,11 +502,10 @@ func (m *Model) openExportProfile() tea.Cmd {
 	return nil
 }
 
-// openImportProfile prompts for a profile JSON file to load into the draft.
+// openImportProfile opens the JSON file browser. The dialog is a picker rather
+// than a typed path so a long directory is navigable.
 func (m *Model) openImportProfile() tea.Cmd {
-	m.commitEdit()
-	m.openPrompt(modalImportProfile, "", "path to a profile JSON file")
-	return nil
+	return m.openImportPicker()
 }
 
 // openPrompt opens a text-prompt modal with a prefilled value.
@@ -661,11 +666,25 @@ func (m *Model) cycleView(delta int) {
 	m.subView = subView(v)
 }
 
+// scrollActive scrolls the visible read-only sub-view by delta lines. The
+// direction-specific methods are used because v2's ScrollDown/ScrollUp
+// short-circuit at their respective ends, so a negative ScrollDown would not
+// scroll up from the bottom.
 func (m *Model) scrollActive(delta int) {
+	var vp *viewport.Model
 	switch m.subView {
 	case subSPD:
-		m.spdVP.LineDown(delta)
+		vp = &m.spdVP
 	case subIMC:
-		m.imcVP.LineDown(delta)
+		vp = &m.imcVP
+	}
+	if vp == nil {
+		return
+	}
+	switch {
+	case delta > 0:
+		vp.ScrollDown(delta)
+	case delta < 0:
+		vp.ScrollUp(-delta)
 	}
 }

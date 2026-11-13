@@ -7,97 +7,100 @@
 package style
 
 import (
+	"image/color"
 	"os"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
+	"charm.land/tone"
 )
 
 // Theme is the semantic token set used by the app shell and shared UI helpers.
 type Theme struct {
-	Bg            lipgloss.AdaptiveColor
-	Fg            lipgloss.AdaptiveColor
-	Muted         lipgloss.AdaptiveColor
-	Accent        lipgloss.AdaptiveColor
-	AccentBg      lipgloss.AdaptiveColor
-	Border        lipgloss.AdaptiveColor
-	BorderFocus   lipgloss.AdaptiveColor
-	Success       lipgloss.AdaptiveColor
-	Warning       lipgloss.AdaptiveColor
-	Danger        lipgloss.AdaptiveColor
-	Info          lipgloss.AdaptiveColor
-	Label         lipgloss.AdaptiveColor
-	Value         lipgloss.AdaptiveColor
-	Dim           lipgloss.AdaptiveColor
-	TabActiveFg   lipgloss.AdaptiveColor
-	TabActiveBg   lipgloss.AdaptiveColor
-	TabInactiveFg lipgloss.AdaptiveColor
-	TabInactiveBg lipgloss.AdaptiveColor
-	ButtonFg      lipgloss.AdaptiveColor
-	ButtonBg      lipgloss.AdaptiveColor
-	ButtonFocusFg lipgloss.AdaptiveColor
-	ButtonFocusBg lipgloss.AdaptiveColor
-	StatusFg      lipgloss.AdaptiveColor
-	ErrorBg       lipgloss.AdaptiveColor
+	Bg            color.Color
+	Fg            color.Color
+	Muted         color.Color
+	Accent        color.Color
+	AccentBg      color.Color
+	Border        color.Color
+	BorderFocus   color.Color
+	Success       color.Color
+	Warning       color.Color
+	Danger        color.Color
+	Info          color.Color
+	Label         color.Color
+	Value         color.Color
+	Dim           color.Color
+	TabActiveFg   color.Color
+	TabActiveBg   color.Color
+	TabInactiveFg color.Color
+	TabInactiveBg color.Color
+	ButtonFg      color.Color
+	ButtonBg      color.Color
+	ButtonFocusFg color.Color
+	ButtonFocusBg color.Color
+	StatusFg      color.Color
+	ErrorBg       color.Color
 }
 
-// Default returns the semantic theme for a dark or light terminal. Colors are
-// AdaptiveColor values with the same color for light and dark backgrounds, so
-// the chosen appearance is stable regardless of terminal auto-detection; the
-// effective rendering still degrades to 256/16/no color through lipgloss.
+// Default returns the semantic theme for a dark or light terminal. Each token
+// is one concrete color: the caller picks the palette (--dark), so nothing here
+// depends on terminal background auto-detection. Bubble Tea v2 downsamples the
+// rendered output to the terminal's color profile, so the same tokens degrade
+// to 256/16/no color without a second code path.
 func Default(dark bool) Theme {
 	if dark {
 		return Theme{
-			Bg:            solid("234"),
-			Fg:            solid("230"),
-			Muted:         solid("245"),
-			Accent:        solid("111"),
-			AccentBg:      solid("62"),
-			Border:        solid("60"),
-			BorderFocus:   solid("111"),
-			Success:       solid("42"),
-			Warning:       solid("220"),
-			Danger:        solid("196"),
-			Info:          solid("153"),
-			Label:         solid("109"),
-			Value:         solid("230"),
-			Dim:           solid("102"),
-			TabActiveFg:   solid("230"),
-			TabActiveBg:   solid("62"),
-			TabInactiveFg: solid("245"),
-			TabInactiveBg: solid("238"),
-			ButtonFg:      solid("230"),
-			ButtonBg:      solid("62"),
-			ButtonFocusFg: solid("230"),
-			ButtonFocusBg: solid("28"),
-			StatusFg:      solid("220"),
-			ErrorBg:       solid("52"),
+			Bg:            tone.Pepper,
+			Fg:            tone.Salt,
+			Muted:         tone.Steam,
+			Accent:        tone.Hazy,
+			AccentBg:      tone.Darple,
+			Border:        tone.Oyster,
+			BorderFocus:   tone.Hazy,
+			Success:       tone.Guac,
+			Warning:       tone.Mustard,
+			Danger:        tone.Sriracha,
+			Info:          tone.Sardine,
+			Label:         tone.Anchovy,
+			Value:         tone.Salt,
+			Dim:           tone.Squid,
+			TabActiveFg:   tone.Salt,
+			TabActiveBg:   tone.Darple,
+			TabInactiveFg: tone.Steam,
+			TabInactiveBg: tone.Char,
+			ButtonFg:      tone.Salt,
+			ButtonBg:      tone.Darple,
+			ButtonFocusFg: tone.Pepper,
+			ButtonFocusBg: tone.Guac,
+			StatusFg:      tone.Mustard,
+			ErrorBg:       tone.Toast,
 		}
 	}
 	return Theme{
-		Bg:            solid("231"),
-		Fg:            solid("16"),
-		Muted:         solid("240"),
-		Accent:        solid("25"),
-		AccentBg:      solid("39"),
-		Border:        solid("250"),
-		BorderFocus:   solid("25"),
-		Success:       solid("28"),
-		Warning:       solid("172"),
-		Danger:        solid("160"),
-		Info:          solid("24"),
-		Label:         solid("24"),
-		Value:         solid("16"),
-		Dim:           solid("244"),
-		TabActiveFg:   solid("231"),
-		TabActiveBg:   solid("25"),
-		TabInactiveFg: solid("240"),
-		TabInactiveBg: solid("253"),
-		ButtonFg:      solid("231"),
-		ButtonBg:      solid("25"),
-		ButtonFocusFg: solid("231"),
-		ButtonFocusBg: solid("28"),
-		StatusFg:      solid("166"),
-		ErrorBg:       solid("224"),
+		Bg:            tone.Salt,
+		Fg:            tone.Pepper,
+		Muted:         tone.Oyster,
+		Accent:        tone.Darple,
+		AccentBg:      tone.Charple,
+		Border:        tone.Steep,
+		BorderFocus:   tone.Darple,
+		Success:       tone.Pickle,
+		Warning:       tone.Tandoor,
+		Danger:        tone.Pom,
+		Info:          tone.Oceania,
+		Label:         tone.Oceania,
+		Value:         tone.Pepper,
+		Dim:           tone.Squid,
+		TabActiveFg:   tone.Salt,
+		TabActiveBg:   tone.Darple,
+		TabInactiveFg: tone.Oyster,
+		TabInactiveBg: tone.Soda,
+		ButtonFg:      tone.Salt,
+		ButtonBg:      tone.Darple,
+		ButtonFocusFg: tone.Salt,
+		ButtonFocusBg: tone.Pickle,
+		StatusFg:      tone.Tandoor,
+		ErrorBg:       tone.Sakura,
 	}
 }
 
@@ -120,8 +123,9 @@ func ActiveTheme() Theme {
 }
 
 // UsePlainOutput disables color for the rest of the process by setting the
-// standard NO_COLOR/CLICOLOR variables that lipgloss and termenv honour. It must
-// be called before the first render (main does this when --no-color is given).
+// standard NO_COLOR/CLICOLOR variables that colorprofile.Detect honours. It must
+// be called before the program starts so the detected profile is already plain
+// (main does this when --no-color is given).
 func UsePlainOutput() {
 	os.Setenv("NO_COLOR", "1")
 	os.Setenv("CLICOLOR", "0")
@@ -247,8 +251,4 @@ func TabInactive() lipgloss.Style {
 		Foreground(t.TabInactiveFg).
 		Background(t.TabInactiveBg).
 		Padding(0, 2)
-}
-
-func solid(c string) lipgloss.AdaptiveColor {
-	return lipgloss.AdaptiveColor{Light: c, Dark: c}
 }

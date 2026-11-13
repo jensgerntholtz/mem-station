@@ -9,7 +9,7 @@ import (
 	"mem-station/internal/style"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // resultColumnWidths are the aligned column widths of the result table.
@@ -23,6 +23,9 @@ const maxResultMetrics = 4
 
 // maxHistoryRows bounds the history rows shown above the log.
 const maxHistoryRows = 4
+
+// Overlay reports no dialog: the run tabs have no modal state.
+func (m *Model) Overlay(int, int) (string, bool) { return "", false }
 
 // View renders the tab into exactly w x h cells.
 func (m *Model) View(w, h int) string {

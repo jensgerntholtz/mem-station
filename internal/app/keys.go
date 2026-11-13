@@ -3,7 +3,7 @@ package app
 import (
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/key"
+	"charm.land/bubbles/v2/key"
 )
 
 // KeyMap holds the global bindings. Tab bindings live in their tab packages.

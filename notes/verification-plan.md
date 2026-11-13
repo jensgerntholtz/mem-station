@@ -43,6 +43,14 @@ against external databases, stress-ng correctness itself.
 Run from `/home/jens/code/mem-station`:
 
 ```bash
+make            # gofmt, vet, build, test (identical to CI)
+make race       # go test ./... -race -count=1
+make integration # go vet/test -tags integration ./internal/runner
+```
+
+The underlying commands, if you prefer them raw:
+
+```bash
 gofmt -l .
 go vet ./...
 go build ./...
@@ -61,11 +69,12 @@ Expected:
 - Golden view tests pass at 80x24 and 120x40 (80x24 means a 78x21 body inside
   the fixed header/tab bar/footer). Every golden goes through the shared
   `internal/uitest` harness, which strips ANSI and owns the single `-update`
-  flag per test binary. Review diffs with `-update` only when the change is
-  intentional:
+  flag per test binary. The flag only exists where the harness is linked, so a
+  repo-wide update needs the environment variable (this is what `make goldens`
+  runs). Review the diff before committing:
   ```bash
-  go test ./... -run TestGolden -update
-  git diff -- 'testdata/*.golden'
+  MEM_STATION_UPDATE_GOLDEN=1 go test ./... -run TestGolden -count=1
+  git diff -- '*/testdata/*.golden'
   ```
 - Parser fixtures: bench and burn-in logs parse to expected values, including
   GB/s vs MB/s, missing rates, error lines, and non-zero exits.
@@ -77,6 +86,51 @@ Expected:
 - Key gating tests: `q` while editing does not quit; plain `1/2/3` while
   editing types digits; `?` opens help; `esc` closes modal before cancelling a
   draft.
+- Bubble Tea v2 specifics (manual, in a real terminal):
+  - `space` now arrives as `"space"` rather than `" "`, so any space handling
+    and the text inputs need a once-over by hand.
+  - `shift+tab` still steps backwards through the timing fields.
+  - `esc` still cancels the edit/modal (and is not eaten as an alt sequence).
+  - Bracketed paste into the timing editor and the profile path prompts.
+  - `--mouse` wheel scrolling, `--no-color`, and `NO_COLOR=1`.
+  - Alt screen is entered and restored on quit; the window title is set.
+- Command line (fang/cobra/log v2), automated where possible:
+  - `mem-station help`, `mem-station <cmd> --help`, `mem-station version`,
+    `mem-station --version`, `mem-station completion bash`, `mem-station man`.
+  - The documented single-dash flags still work and match their double-dash
+    form: `info -json -imc` must print the same document as
+    `info --json --imc` (covered by a test).
+  - `-json -v` keeps stdout to exactly one JSON document while the debug trace
+    goes to stderr.
+  - `--log-file PATH` appends the same diagnostics to a `0600` file; `-q`
+    suppresses warnings such as an unreadable configured job file.
+  - Exit codes: unknown command or flag → `2`; a failed bench/burn-in → `1`
+    with the verdict on stdout and no extra error banner; `130` on interrupt.
+- Dialogs and pickers (P3):
+  - Help, the apply review and every prompt float over the tab instead of
+    replacing it; the frame stays exactly 80x24 and 120x40.
+  - `ctrl+l`: the picker lists saved profiles, `/` filters, ↑/↓ selects, enter
+    loads into the draft, esc/q close. It must never quit the program.
+  - `ctrl+o`: the browser starts in the working directory, `*.json` files are
+    selectable, `h`/`backspace`/`←` go up, esc closes. An invalid file keeps
+    the dialog open with the reason inside it.
+  - `ctrl+e` in Burn-in: the embedded preset explains that `--job PATH` is
+    needed; a custom job file opens in `$EDITOR` and is reloaded on return.
+  - The terminal progress bar appears only while a bench/burn-in is running.
+- `report`:
+  - `mem-station report` on a terminal renders with glamour; `NO_COLOR=1` gives
+    plain rendered text.
+  - `mem-station report > report.md` writes raw Markdown (starts with
+    `# MemStation report`, no ANSI) that GitHub/pandoc can read.
+  - `--style dark` forces styling even when piped; `--style raw` writes the
+    source on a terminal.
+  - `report --json` parses as one document whose `hardware` section matches
+    `info --json`; `--json --markdown` and `--history 0` exit `2`.
+  - A machine with no SPD, no applied profile and no runs still produces every
+    section with an explanation instead of an empty document.
+- Demo tapes (local, not CI): `./demo/record.sh` produces `demo/*.gif`; each
+  tape should show its named flow and end cleanly on `q`. Recording needs
+  `ffmpeg`, `vhs` and `ttyd`; `demo/README.md` has the bootstrap commands.
 
 CI (`.github/workflows/ci.yml`) runs gofmt, `go vet ./...`, `go build ./...`,
 and `go test ./... -count=1` on `ubuntu-latest`. CI does not run hardware, the

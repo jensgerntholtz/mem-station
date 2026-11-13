@@ -11,7 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	ta "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // update rewrites golden files instead of comparing them.
@@ -20,20 +21,64 @@ var update = flag.Bool("update", false, "rewrite golden files")
 // ansiRe matches CSI/SGR escape sequences emitted by lipgloss.
 var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*[a-zA-Z]")
 
-// Update reports whether goldens should be rewritten (-update).
-func Update() bool { return *update }
+// Update reports whether goldens should be rewritten. Either the -update flag
+// (which only exists in test binaries that link this package) or the
+// MEM_STATION_UPDATE_GOLDEN environment variable rewrites them. The env var is
+// what makes `go test ./... -run TestGolden` work repo-wide: packages without
+// golden tests never register the flag, so passing -update to ./... fails
+// before any test runs.
+func Update() bool {
+	if *update {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("MEM_STATION_UPDATE_GOLDEN"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
 
 // StripANSI removes escape sequences so goldens do not depend on the terminal
 // color profile.
 func StripANSI(s string) string { return ansiRe.ReplaceAllString(s, "") }
 
-// Golden compares got with dir/name, creating or rewriting it when -update is
-// set. Comparison ignores ANSI sequences and trailing newlines.
+/* --------------- key helpers --------------- */
+
+// Key builds a printable key press. It is the Bubble Tea v2 equivalent of the
+// v1 tea.KeyMsg{Type: tea.KeyRunes, Runes: ...} literal: printable input
+// carries Text, and Code mirrors the first rune.
+func Key(s string) ta.KeyPressMsg {
+	r := []rune(s)
+	k := ta.KeyPressMsg{Text: s}
+	if len(r) > 0 {
+		k.Code = r[0]
+	}
+	return k
+}
+
+// Code builds a key press for a non-printable key such as enter, esc, or an
+// arrow key.
+func Code(c rune) ta.KeyPressMsg { return ta.KeyPressMsg{Code: c} }
+
+// Ctrl builds a ctrl+<letter> key press.
+func Ctrl(c rune) ta.KeyPressMsg { return ta.KeyPressMsg{Code: c, Mod: ta.ModCtrl} }
+
+// Wheel builds a mouse wheel message; up reports the wheel direction.
+func Wheel(up bool) ta.MouseWheelMsg {
+	button := ta.MouseWheelDown
+	if up {
+		button = ta.MouseWheelUp
+	}
+	return ta.MouseWheelMsg{Button: button}
+}
+
+// Golden compares got with dir/name, creating or rewriting it when Update is
+// true. Comparison ignores ANSI sequences and trailing newlines.
 func Golden(t *testing.T, dir, name, got string) {
 	t.Helper()
 	got = strings.TrimRight(StripANSI(got), "\n")
 	path := filepath.Join(dir, name)
-	if *update {
+	if Update() {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", dir, err)
 		}

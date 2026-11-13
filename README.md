@@ -70,9 +70,23 @@ go build -o mem-station ./cmd/mem-station
 | `--job PATH` | burn-in job file, overrides `MEM_STATION_JOB` |
 | `--version` | print the version and exit |
 
+These apply to every command, not just the launcher:
+
+| Flag | Meaning |
+| --- | --- |
+| `--log-file PATH` | append diagnostics to a file as well as stderr |
+| `-v`, `--verbose` | log debug diagnostics (start options, run results) |
+| `-q`, `--quiet` | log errors only, e.g. suppress a missing-job warning |
+
 `NO_COLOR=1` and `CLICOLOR=0` are honoured without any flag. State is never
 conveyed by color alone: severities and verdicts carry `ok`, `?`, `!`, and `x`
 markers.
+
+The command line is built with [fang](https://github.com/charmbracelet/fang), so
+`mem-station help`, per-command `--help`, shell completions
+(`mem-station completion bash`) and man pages (`mem-station man`) come for free.
+Both `--json` and the documented single-dash `-json` work; long flags are
+rewritten before parsing.
 
 ## Keys
 
@@ -103,12 +117,17 @@ Global keys work whenever no text input or modal owns the keyboard.
 | `ctrl+r` | reset the draft to the applied values |
 | `[`/`]` | Timings, SPD, and IMC views |
 | `ctrl+p` | save the draft as a named profile |
-| `ctrl+l` | load a named profile into the draft |
+| `ctrl+l` | pick a saved profile (↑/↓, `/` filters, enter loads) |
 | `ctrl+e` | export the active profile JSON to a path you type |
-| `ctrl+o` | import a profile JSON file into the draft (validated) |
+| `ctrl+o` | browse for a profile JSON file to import into the draft (validated) |
 
 Named profiles, imports, and exports only ever change the draft. Applying is the
 only step that writes the active profile, and it never touches hardware.
+
+`ctrl+l` and `ctrl+o` open pickers rather than asking you to type a name or an
+absolute path; `esc` closes either one without changing the draft. The built-in
+burn-in preset is compiled in, so `ctrl+e` only has a file to edit when you
+start with `--job PATH` (or `MEM_STATION_JOB`).
 
 ### Benchmark
 
@@ -133,13 +152,15 @@ only step that writes the active profile, and it never touches hardware.
 | `e` | toggle the errors-only log filter |
 | `f` | toggle log follow |
 | `s` | export the last result JSON into the state dir |
+| `ctrl+e` | edit the selected job file in `$EDITOR` (custom jobs only) |
 | `pgup`/`pgdown` | scroll the log |
 
 ## Headless commands
 
 The same hardware/runner/store code powers scriptable commands. Human output goes
-to stdout, diagnostics to stderr, and `-json` prints exactly one JSON document on
-stdout.
+to stdout, diagnostics to stderr, and `--json` prints exactly one JSON document on
+stdout. The older single-dash forms (`-json`, `-duration`, `-out`, ...) still
+work.
 
 The direct IMC register reader has verified layouts for Intel Sandy Bridge, Ivy
 Bridge, Haswell, and Broadwell. Other CPUs still get primary/secondary timings
@@ -157,18 +178,33 @@ mem-station bench -duration 30s -json -out ./bench.json
 
 mem-station burnin -duration 30m -preset memory-heavy
 mem-station burnin -duration 5m -job ./my.job -json -out ./burnin.json
+
+mem-station report                     # hardware + profile + history, styled
+mem-station report > report.md         # the Markdown source, piped
+mem-station report --json              # the same content as one JSON document
+mem-station report --imc --history 5   # opt-in registers, five recent runs
 ```
 
+`report` renders Markdown for a terminal and prints the Markdown source when
+stdout is not a terminal, so redirecting it produces a file GitHub or pandoc can
+read. `--style` forces a rendering (`raw`, `dark`, `light`, `notty`, `ascii`,
+`pink`, `dracula`, `tokyo-night`); `--json` embeds the same documents `info
+--json`, the profile store and `history.jsonl` already use, rather than a new
+schema. Detection failures are reported in the document instead of failing the
+command.
+
 Exit codes: `0` success (a passed run for `burnin`, a parsed run for `bench`),
-`1` the run failed, `2` usage error, `130` interrupted.
+`1` the run failed, `2` usage error, `130` interrupted. A failed run exits `1`
+without an extra error banner, because the verdict is already on stdout; usage
+errors are printed by fang on stderr.
 
 `SIGINT`/`SIGTERM` cancel the running job's process group and still report the
 runner's terminal state, so a script sees `cancelled` rather than a hang.
 
-Headless runs record the *applied* profile as their configuration and never run
-hardware detection; use `mem-station info` for detection. `bench` and `burnin`
-print the log path they wrote; `-out PATH` additionally writes the same JSON
-document to a path you choose.
+`bench` and `burnin` record the *applied* profile as their configuration and
+never run hardware detection; `info` and `report` are the detection commands.
+`bench` and `burnin` print the log path they wrote; `-out PATH` additionally
+writes the same JSON document to a path you choose.
 
 ## State directory
 
@@ -192,6 +228,17 @@ TUI runs; `--job`/`MEM_STATION_JOB` adds a custom job as a second preset.
 
 ## Development
 
+`make` is the single entry point; CI runs the same targets.
+
+```bash
+make            # gofmt, vet, build, test (what CI runs)
+make race       # the suite under -race
+make integration # tagged runner tests (launches /bin/sh only)
+make goldens    # rewrite golden views, then print the diff summary
+```
+
+The raw commands remain available:
+
 ```bash
 gofmt -l .          # must print nothing
 go vet ./...
@@ -199,10 +246,20 @@ go build ./...
 go test ./...
 go test -tags integration ./internal/runner   # launches /bin/sh only
 go test ./... -run TestGolden -update         # rewrite golden views
+go test ./internal/app -run TestGolden -update  # the same, scoped to one package
 ```
 
-CI runs gofmt, vet, build, and the default test suite on `ubuntu-latest` with no
-root and no hardware.
+The `-update` flag only exists in test binaries that link `internal/uitest`, so
+`go test ./... -update` fails in packages without golden tests. Use the
+`MEM_STATION_UPDATE_GOLDEN=1` environment variable (or `make goldens`) for a
+repo-wide update; review the diff before committing.
+
+CI runs gofmt, vet, build, the default test suite and the race suite on
+`ubuntu-latest` with no root and no hardware.
+
+`./demo/record.sh` records the demo GIFs locally with VHS; see
+[`demo/README.md`](demo/README.md). It is a developer convenience and is not
+part of CI.
 
 Layout: `internal/app` is the shell (layout, global keys, routing); tabs live in
 `internal/sysinfo`, `internal/benchmark`, and `internal/burnin` and never import

@@ -3,7 +3,9 @@ package app
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	"mem-station/internal/uitest"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // keyMode is the input ownership state a global key has to respect.
@@ -20,7 +22,7 @@ const (
 // and what the shell is allowed to do with it.
 type keyCase struct {
 	mode keyMode
-	key  tea.KeyMsg
+	key  tea.KeyPressMsg
 	// quits is true when the key may end the program.
 	quits bool
 	// switchesTab is true when the key may change the active tab.
@@ -34,12 +36,12 @@ type keyCase struct {
 // TestGlobalKeyGating drives the table through the root shell so a key can
 // never both type into an editor and trigger a global action.
 func TestGlobalKeyGating(t *testing.T) {
-	key := func(s string) tea.KeyMsg {
+	key := func(s string) tea.KeyPressMsg {
 		switch s {
 		case "esc":
-			return tea.KeyMsg{Type: tea.KeyEsc}
+			return uitest.Code(tea.KeyEsc)
 		default:
-			return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+			return uitest.Key(s)
 		}
 	}
 
@@ -68,20 +70,20 @@ func TestGlobalKeyGating(t *testing.T) {
 
 		switch tc.mode {
 		case modeEditing:
-			m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // start editing Channels
+			m.Update(uitest.Code(tea.KeyEnter)) // start editing Channels
 			if !m.sys.Editing() {
 				t.Fatalf("%s: setup failed, no field is being edited", tc.mode)
 			}
 		case modeModal:
-			m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-			m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
-			m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-			m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+			m.Update(uitest.Code(tea.KeyEnter))
+			m.Update(uitest.Key("4"))
+			m.Update(uitest.Code(tea.KeyEnter))
+			m.Update(uitest.Ctrl('s'))
 			if !m.sys.ModalOpen() {
 				t.Fatalf("%s: setup failed, no modal is open", tc.mode)
 			}
 		case modeHelp:
-			m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+			m.Update(uitest.Key("?"))
 			if !m.helpOpen {
 				t.Fatalf("%s: setup failed, help is not open", tc.mode)
 			}
@@ -116,12 +118,12 @@ func TestMouseWheelScrollsViewports(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m.sys.SetDetected(map[string]string{"DRAM Freq": "3200"}, "ok", nil)
 	// The SPD view scrolls with pgup/pgdown, which wheel events map onto.
-	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
-	m.View()
+	m.Update(uitest.Key("]"))
+	_ = m.View().Content
 
-	wheel := tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown}
+	wheel := uitest.Wheel(false)
 	m.Update(wheel)
-	m.View()
+	_ = m.View().Content
 	// Scrolling may legitimately stop at the end of a short SPD view; the
 	// contract under test is that no key is misinterpreted, so assert the tab
 	// stayed on the SPD view and the shell still fits.
@@ -143,7 +145,7 @@ func TestIMCKeyStartsOptInRead(t *testing.T) {
 	m := testModel(t)
 	m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("I")})
+	_, cmd := m.Update(uitest.Key("I"))
 	if cmd == nil {
 		t.Fatal("I did not start an IMC register read")
 	}

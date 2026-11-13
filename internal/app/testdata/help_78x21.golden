@@ -1,24 +1,24 @@
   MemStation   0.2.0-dev  3200 MT/s · 16384 MB · F4-3200C16-16GVK               
    1 Timings    2 Benchmark    3 Burn-in                                        
  ╭────────────────────────────────────────────────────────────────────────────╮ 
- │ Global                                                                     │ 
- │   f1/f2/f3  switch tabs (or 1/2/3)                                         │ 
- │   ?  toggle help                                                           │ 
- │   esc  close help                                                          │ 
- │   R  retry detection (unprivileged)                                        │ 
- │   E  elevate detection with sudo                                           │ 
- │   I  read raw IMC registers (opt-in)                                       │ 
- │   ctrl+c  cancel a running job, else quit                                  │ 
- │   q  quit                                                                  │ 
- │                                                                            │ 
- │ Timings                                                                    │ 
- │   ↑/k  select                                                              │ 
- │   ↓/j  select                                                              │ 
- │   ←  decrease                                                              │ 
- │   →  increase                                                              │ 
- │   enter  edit                                                              │ 
- │   esc  cancel/reset                                                        │ 
- │   tab  next field                                                          │ 
- │ ↑/↓ scroll · esc close                                                     │ 
+ │ ╭────────────────────────────────────────────────────────────────────────╮ │ 
+ │ │ Global                                                                 │ │ 
+ │ │   f1/f2/f3  switch tabs (or 1/2/3)                                     │ │ 
+ │ │   ?  toggle help                                                       │ │ 
+ │ │   esc  close help                                                      │ │ 
+ │ │   R  retry detection (unprivileged)                                    │ │ 
+ │ │   E  elevate detection with sudo                                       │ │ 
+ │ │   I  read raw IMC registers (opt-in)                                   │ │ 
+ │ │   ctrl+c  cancel a running job, else quit                              │ │ 
+ │ │   q  quit                                                              │ │ 
+ │ │                                                                        │ │ 
+ ╰─│ Timings                                                                │─╯ 
+   │   ↑/k  select                                                          │   
+ ╭─│   ↓/j  select                                                          │─╮ 
+ │ │   ←  decrease                                                          │ │ 
+ │ │   →  increase                                                          │ │ 
+ │ │   enter  edit                                                          │ │ 
+ │ │ ↑/↓ scroll · esc close                                                 │ │ 
+ │ ╰────────────────────────────────────────────────────────────────────────╯ │ 
  ╰────────────────────────────────────────────────────────────────────────────╯ 
  Detected 2 channels at 3200 MT/s↑/k select  ← decrease  → increase  enter edit 

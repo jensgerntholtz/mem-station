@@ -7,12 +7,32 @@ import (
 	"mem-station/internal/style"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // View renders the whole shell: header, tab bar, body, footer. The result is
 // exactly the terminal size minus nothing - the body absorbs all slack.
-func (m *Model) View() string {
+//
+// Bubble Tea v2 takes terminal modes from the view instead of program options,
+// so the alternate screen, the window title, and mouse capture are declared
+// here rather than at Program construction.
+func (m *Model) View() tea.View {
+	v := tea.NewView(m.render())
+	v.AltScreen = true
+	v.WindowTitle = "MemStation"
+	if m.opts.Mouse {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
+	if p := m.tabs[m.active].Progress(); p >= 0 {
+		v.ProgressBar = tea.NewProgressBar(tea.ProgressBarDefault, int(p*100))
+	}
+	return v
+}
+
+// render builds the view content. Tests compare it against golden files, and
+// View wraps it with the terminal modes above.
+func (m *Model) render() string {
 	if m.tooSmall() {
 		return m.tooSmallView()
 	}
@@ -21,19 +41,30 @@ func (m *Model) View() string {
 	parts := []string{
 		m.renderHeader(f),
 		m.renderTabBar(f),
+		m.tabs[m.active].View(f.contentW, f.bodyH),
+		ui.Footer(m.status, m.level, m.tabs[m.active].Keys(), f.contentW),
 	}
-
-	if m.helpOpen {
-		parts = append(parts, ui.HelpOverlayAt(f.contentW, f.bodyH, m.HelpSections(), m.helpOffset))
-	} else {
-		parts = append(parts, m.tabs[m.active].View(f.contentW, f.bodyH))
-	}
-
-	parts = append(parts, ui.Footer(m.status, m.level, m.tabs[m.active].Keys(), f.contentW))
 
 	body := lipgloss.JoinVertical(lipgloss.Left, parts...)
 	body = ui.ClipLines(body, f.height)
+	if dialog, ok := m.overlay(f); ok {
+		body = ui.Overlay(body, dialog, 0, headerH+tabBarH, f.contentW, f.bodyH)
+	}
 	return lipgloss.NewStyle().Padding(0, 1).Render(body)
+}
+
+// overlay returns the dialog the shell composites over the body, if any. Help
+// wins because a tab cannot open its own dialog while help owns the keys.
+func (m *Model) overlay(f frame) (string, bool) {
+	if m.helpOpen {
+		w := min(f.contentW-4, 92)
+		h := f.bodyH - 2
+		if w < 4 || h < 2 {
+			return "", false
+		}
+		return ui.HelpOverlayAt(w, h, m.HelpSections(), m.helpOffset), true
+	}
+	return m.tabs[m.active].Overlay(f.contentW, f.bodyH)
 }
 
 // renderHeader draws the title, host summary, and dirty/running markers.

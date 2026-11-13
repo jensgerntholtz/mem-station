@@ -19,9 +19,11 @@ import (
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/filepicker"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 // subView selects which read-only or editable panel the tab shows.
@@ -74,11 +76,11 @@ func (s modalState) Title() string {
 	}
 }
 
-// prompt reports whether the modal asks for a typed value instead of a yes/no
-// decision.
+// prompt reports whether the modal asks for a typed value instead of a
+// list/yes-no decision. The load modal is a picker, not a prompt.
 func (s modalState) prompt() bool {
 	switch s {
-	case modalSaveProfile, modalLoadProfile, modalExportProfile, modalImportProfile:
+	case modalSaveProfile, modalExportProfile:
 		return true
 	}
 	return false
@@ -115,6 +117,14 @@ type Model struct {
 	promptHint string
 	promptErr  string
 
+	// picker is the saved-profile list shown by ctrl+l; it shares the modal
+	// state with the prompt dialogs but owns its own input handling.
+	picker    list.Model
+	pickerErr string
+
+	// importPicker is the JSON file browser shown by ctrl+o.
+	importPicker filepicker.Model
+
 	keys KeyMap
 }
 
@@ -135,25 +145,27 @@ func New() *Model {
 	in := textinput.New()
 	in.Prompt = "" // the label column already shows which field is focused
 	in.CharLimit = 8
-	in.Width = draftColW - 1
+	in.SetWidth(draftColW - 1)
 
 	prompt := textinput.New()
 	prompt.Prompt = "> "
 	prompt.CharLimit = 512
-	prompt.Width = 60
+	prompt.SetWidth(60)
 
 	return &Model{
-		fields:     Fields(),
-		draft:      draft,
-		applied:    applied,
-		detected:   map[FieldID]string{},
-		input:      in,
-		prompt:     prompt,
-		lockRatios: true,
-		imcNote:    "Raw MCHBAR registers are opt-in; press I to read them.",
-		spdVP:      viewport.New(60, 10),
-		imcVP:      viewport.New(60, 10),
-		keys:       DefaultKeyMap(),
+		fields:       Fields(),
+		draft:        draft,
+		applied:      applied,
+		detected:     map[FieldID]string{},
+		input:        in,
+		prompt:       prompt,
+		lockRatios:   true,
+		imcNote:      "Raw MCHBAR registers are opt-in; press I to read them.",
+		spdVP:        viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
+		imcVP:        viewport.New(viewport.WithWidth(60), viewport.WithHeight(10)),
+		picker:       newProfilePicker(),
+		importPicker: newImportPicker(),
+		keys:         DefaultKeyMap(),
 	}
 }
 
@@ -244,6 +256,9 @@ func (m *Model) Running() bool { return false }
 
 // Wants reports whether this tab owns runner events of the given kind.
 func (m *Model) Wants(runner.Kind) bool { return false }
+
+// Progress reports -1: the Timings tab never runs a job.
+func (m *Model) Progress() float64 { return -1 }
 
 // Dirty reports whether the draft differs from the applied values.
 func (m *Model) Dirty() bool {

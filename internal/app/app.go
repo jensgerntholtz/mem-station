@@ -15,7 +15,7 @@ import (
 	"mem-station/internal/sysinfo"
 	"mem-station/internal/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Version is the default version string shown in the header.
@@ -30,6 +30,9 @@ type Tab interface {
 	Update(tea.Msg) tea.Cmd
 	// View renders the tab into exactly w x h cells.
 	View(w, h int) string
+	// Overlay returns a dialog to composite over the tab, and whether one is
+	// open. The shell owns placement, so the tab returns the bare dialog box.
+	Overlay(w, h int) (string, bool)
 	// Title is the tab label.
 	Title() string
 	// Keys are the context key hints shown in the footer.
@@ -42,6 +45,9 @@ type Tab interface {
 	ModalOpen() bool
 	// Running reports whether the tab has an active job.
 	Running() bool
+	// Progress reports the active job's completion in 0..1, or -1 when no job
+	// is running. The shell forwards it to the terminal's native progress bar.
+	Progress() float64
 	// Dirty reports unsaved draft changes.
 	Dirty() bool
 	// Wants reports whether the tab owns runner events of a kind.

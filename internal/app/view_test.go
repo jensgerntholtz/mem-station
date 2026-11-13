@@ -3,10 +3,12 @@ package app
 import (
 	"testing"
 
+	"mem-station/internal/config"
 	"mem-station/internal/memory"
+	"mem-station/internal/store"
 	"mem-station/internal/uitest"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // detectedMsg is the deterministic detection result every golden view starts
@@ -57,20 +59,28 @@ func TestGoldenShellViews(t *testing.T) {
 		{name: "timings_78x21", w: 80, h: 24},
 		{name: "timings_118x37", w: 120, h: 40},
 		{name: "help_78x21", w: 80, h: 24, run: func(m *Model) {
-			m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+			m.Update(uitest.Key("?"))
 		}},
 		{name: "help_118x37", w: 120, h: 40, run: func(m *Model) {
-			m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+			m.Update(uitest.Key("?"))
 		}},
 		{name: "apply_review_118x37", w: 120, h: 40, run: func(m *Model) {
 			// Edit the focused field (Channels), then open the review modal.
-			m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-			m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
-			m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-			m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+			m.Update(uitest.Code(tea.KeyEnter))
+			m.Update(uitest.Key("4"))
+			m.Update(uitest.Code(tea.KeyEnter))
+			m.Update(uitest.Ctrl('s'))
 		}},
 		{name: "profile_prompt_118x37", w: 120, h: 40, run: func(m *Model) {
-			m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+			m.Update(uitest.Ctrl('p'))
+		}},
+		{name: "profile_picker_118x37", w: 120, h: 40, run: func(m *Model) {
+			for _, name := range []string{"daily-3200", "undervolt", "stock"} {
+				if err := store.SaveNamedProfile(config.Profile{Name: name}); err != nil {
+					t.Fatalf("SaveNamedProfile(%q): %v", name, err)
+				}
+			}
+			m.Update(uitest.Ctrl('l'))
 		}},
 		{name: "toosmall_68x18", w: 70, h: 20},
 	}
@@ -80,7 +90,7 @@ func TestGoldenShellViews(t *testing.T) {
 			if tc.run != nil {
 				tc.run(m)
 			}
-			uitest.GoldenView(t, "testdata", tc.name+".golden", tc.w, tc.h, m.View())
+			uitest.GoldenView(t, "testdata", tc.name+".golden", tc.w, tc.h, m.View().Content)
 		})
 	}
 }

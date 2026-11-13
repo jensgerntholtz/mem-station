@@ -12,9 +12,9 @@ import (
 	"mem-station/internal/runner"
 	"mem-station/internal/ui"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 )
 
 // configRow identifies one row of the run configuration.
@@ -86,7 +86,7 @@ func New(snapshot config.Snapshot) *Model {
 	in := textinput.New()
 	in.Prompt = ""
 	in.CharLimit = 8
-	in.Width = 8
+	in.SetWidth(8)
 
 	return &Model{
 		state:         runner.StateIdle,
@@ -99,7 +99,7 @@ func New(snapshot config.Snapshot) *Model {
 		workers:       1,
 		input:         in,
 		follow:        true,
-		vp:            viewport.New(60, 8),
+		vp:            viewport.New(viewport.WithWidth(60), viewport.WithHeight(8)),
 		keys:          DefaultKeyMap(),
 	}
 }
@@ -121,6 +121,14 @@ func (m *Model) ModalOpen() bool { return false }
 
 // Running reports whether a benchmark job is active.
 func (m *Model) Running() bool { return m.state == runner.StateRunning }
+
+// Progress reports the running job's completion in 0..1, or -1 when idle.
+func (m *Model) Progress() float64 {
+	if !m.Running() {
+		return -1
+	}
+	return m.progress() / 100
+}
 
 // Dirty reports whether unattributed changes exist (never here).
 func (m *Model) Dirty() bool { return false }

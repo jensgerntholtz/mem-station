@@ -2,7 +2,8 @@ name: CI
 
 # Static checks and the default test suite. Nothing here needs root, hardware,
 # dmidecode, decode-dimms, or stress-ng: tests inject detection, jobs, and an
-# isolated MEM_STATION_STATE_DIR.
+# isolated MEM_STATION_STATE_DIR. Every step is a Makefile target so local runs
+# and CI cannot drift apart.
 on:
   push:
     branches: [main, tui-improvements]
@@ -22,20 +23,15 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: gofmt
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "gofmt is required for:"
-            echo "$unformatted"
-            exit 1
-          fi
+      # gofmt (fails on unformatted files), vet, build, and the default tests.
+      # Golden drift fails here too: comparison runs unless -update/the update
+      # env var is set, which CI never sets.
+      - name: make check
+        run: make check
 
-      - name: go vet
-        run: go vet ./...
+      - name: make race
+        run: make race
 
-      - name: go build
-        run: go build ./...
-
-      - name: go test
-        run: go test ./... -count=1
+      # Compiles the tagged runner tests and runs them against /bin/sh.
+      - name: make integration
+        run: make integration

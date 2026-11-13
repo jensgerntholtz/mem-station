@@ -11,7 +11,7 @@ import (
 	"mem-station/internal/store"
 	"mem-station/internal/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // Metric is one parsed memrate sub-metric in the persisted schema.

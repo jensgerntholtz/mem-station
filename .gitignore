@@ -44,3 +44,11 @@ Thumbs.db
 *.orig
 *.rej
 *.tmp
+
+# --- Demo recordings --------------------------------------------------------
+# Local tooling and throwaway state for demo/record.sh, plus the generated
+# GIFs. Publish a demo with `git add -f demo/<name>.gif` when you want it.
+demo/.tools/
+demo/.build/
+demo/.state/
+demo/*.gif
