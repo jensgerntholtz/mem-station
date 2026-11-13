@@ -5,7 +5,7 @@ run parallel         # runs all stressors at the same time for maximum load
 aggressive           # enable aggressive options
 metrics-brief
 verbose
-timeout 30s
+timeout 30m
 
 # ----------- Memory Stressors -----------
 atomic 0                   # atomic operations, shared data stress
